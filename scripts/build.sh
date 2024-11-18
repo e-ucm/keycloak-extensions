@@ -39,24 +39,24 @@ LIST_SHORT_OPTIONS=(
 )
 
 opts=$(getopt \
-    --longoptions "force$(printf "%s:," "${LIST_LONG_OPTIONS[@]}")" \
-    --options "f$(printf "%s:", "${LIST_SHORT_OPTIONS[@]}")" \
+    --longoptions "$(printf "%s," "${LIST_LONG_OPTIONS[@]}")" \
+    --options "$(printf "%s", "${LIST_SHORT_OPTIONS[@]}")" \
     --name "${SOURCE}" \
     -- "$@"
 )
 
-eval set --$opts
+eval set -- $opts
 
 extension=""
 m2_cache="$(dirname "${SCRIPT_DIR}")/data"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -c | --cache )
-        KEYCLOAK_VERSION="$2"
+        m2_cache="$2"
         shift 2
         ;;
     -k | --keycloak )
-        m2_cache="$2"
+        KEYCLOAK_VERSION="$2"
         shift 2
         ;;
     --)
@@ -84,6 +84,7 @@ fi
 mvn_cmd="mvn -Duser.home=/maven-config "-Dkeycloak.version=${KEYCLOAK_VERSION}" clean package"
 user_uid=$(id -u ${USER})
 user_gid=$(id -g ${USER})
+
 docker run --rm --name maven-project-builder \
     -v ${extension}:/usr/src/mymaven \
     -v ${m2_cache}:/maven-config \
