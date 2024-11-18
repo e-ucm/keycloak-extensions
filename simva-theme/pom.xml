@@ -15,10 +15,9 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <keycloak.version>10.0.2</keycloak.version>
+        <keycloak.version>24.0.2</keycloak.version>
     </properties>
     <build>
-        <finalName>${groupId}.${artifactId}-${version}</finalName>
-      
+        <finalName>${groupId}.${artifactId}-${version}</finalName>      
     </build>
 </project>

@@ -1,4 +1,10 @@
-<#macro registrationLayout bodyClass="" displayInfo=false displayMessage=true displayRequiredFields=false displayWide=false showAnotherWayIfPresent=true>
+<#macro registrationLayout bodyClass="" 
+    displayInfo=false
+    displayMessage=true 
+    displayRequiredFields=false
+    displayWide=false 
+    showAnotherWayIfPresent=true
+>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" class="${properties.kcHtmlClass!}">
 
@@ -95,11 +101,14 @@
         </#if>
       </header>
       <div id="kc-content" class="box">
-        <div id="kc-content-wrapper">
+        <div>
+            <img class="logo" src="${url.resourcesPath}/img/simva-logo.png" alt="Simva">
+        </div>
 
-          <#-- App-initiated actions should not see warning messages about the need to complete the action -->
-          <#-- during login.                                                                               -->
-          <#if displayMessage && message?has_content && (message.type != 'warning' || !isAppInitiatedAction??)>
+        <#-- App-initiated actions should not see warning messages about the need to complete the action -->
+        <#-- during login.                                                                               -->
+        <#if displayMessage && message?has_content && (message.type != 'warning' || !isAppInitiatedAction??)>
+            <div id="kc-form" class="box-container para <#if realm.password && social.providers??>${properties.kcContentWrapperClass!}</#if>">
               <div class="alert alert-${message.type}">
                   <#if message.type = 'success'><span class="${properties.kcFeedbackSuccessIcon!}"></span></#if>
                   <#if message.type = 'warning'><span class="${properties.kcFeedbackWarningIcon!}"></span></#if>
@@ -107,21 +116,23 @@
                   <#if message.type = 'info'><span class="${properties.kcFeedbackInfoIcon!}"></span></#if>
                   <span class="kc-feedback-text">${kcSanitize(message.summary)?no_esc}</span>
               </div>
-          </#if>
+            </div>
+        </#if>
+        <div id="kc-content-wrapper">
+            <div id="kc-form" class="box-container para <#if (realm.password && social.providers)??>${properties.kcContentWrapperClass!}</#if>">
+                <#nested "form">
+            </div>
 
-          <#nested "form">
-
-          <#if auth?has_content && auth.showTryAnotherWayLink() && showAnotherWayIfPresent>
-          <form id="kc-select-try-another-way-form" action="${url.loginAction}" method="post" <#if displayWide>class="${properties.kcContentWrapperClass!}"</#if>>
-              <div <#if displayWide>class="${properties.kcFormSocialAccountContentClass!} ${properties.kcFormSocialAccountClass!}"</#if>>
-                  <div class="${properties.kcFormGroupClass!}">
-                    <input type="hidden" name="tryAnotherWay" value="on" />
-                    <a href="#" id="try-another-way" onclick="document.forms['kc-select-try-another-way-form'].submit();return false;">${msg("doTryAnotherWay")}</a>
-                  </div>
-              </div>
-          </form>
-          </#if>
-
+            <#if auth?has_content && auth.showTryAnotherWayLink() && showAnotherWayIfPresent>
+                <form id="kc-select-try-another-way-form" action="${url.loginAction}" method="post" <#if displayWide>class="${properties.kcContentWrapperClass!}"</#if>>
+                    <div <#if displayWide>class="${properties.kcFormSocialAccountContentClass!} ${properties.kcFormSocialAccountClass!}"</#if>>
+                        <div class="${properties.kcFormGroupClass!}">
+                            <input type="hidden" name="tryAnotherWay" value="on" />
+                            <a href="#" id="try-another-way" onclick="document.forms['kc-select-try-another-way-form'].submit();return false;">${msg("doTryAnotherWay")}</a>
+                        </div>
+                    </div>
+                </form>
+            </#if>
         </div>
       </div>
 
