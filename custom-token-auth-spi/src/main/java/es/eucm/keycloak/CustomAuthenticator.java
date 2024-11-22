@@ -22,14 +22,24 @@ import java.io.IOException;
 
 public class CustomAuthenticator extends AbstractUsernameFormAuthenticator implements Authenticator {
 
-    private final Logger log = LoggerFactory.getLogger(CustomAuthenticator.class);
+    private final Logger logger = LoggerFactory.getLogger(CustomAuthenticator.class);
 
     private ObjectMapper objectMapper = new ObjectMapper();
 
     private final KeycloakSession session;
+    private SimvaApiClient client;
 
     public CustomAuthenticator(KeycloakSession session) {
         this.session = session;
+        this.client = new SimvaApiClient();  // Initialize client from environment variables
+        try {
+            if(!this.client.isAuthentificated()) {
+                this.client.authenticate();
+            }
+            this.client.sendGetRequest("/studies");
+        } catch(Exception e) {
+            logger.info(e.toString());
+        }
     }
 
     /**
@@ -65,7 +75,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         }
 
         if(tokenPresent == null) {
-            log.info("AUTHENTICATE username/password custom provider");
+            logger.info("AUTHENTICATE username/password custom provider");
             Response challengeResponse = challenge(context.form(), formData);
             context.challenge(challengeResponse);
         } else {
@@ -75,7 +85,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
             if(study != "") {
                 studyurl.append("&state=").append(study);
             }
-            log.info("AUTHENTICATE token custom provider");
+            logger.info("AUTHENTICATE token custom provider");
             Response challengeResponse = challenge(context.form().setAttribute("studyurl", studyurl.toString()), formData);
             context.challenge(challengeResponse);
         }
@@ -104,13 +114,13 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         }
 
         // Log the message
-        log.info("Data: {}", logMessage.toString());
+        logger.info("Data: {}", logMessage.toString());
     }
 
     @Override
     public void action(AuthenticationFlowContext context) {
         logMap(context.getHttpRequest().getUri().getQueryParameters());
-        log.info("CUSTOMER PROVIDER action");
+        logger.info("CUSTOMER PROVIDER action");
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
         //logMap(formData);
         if (formData.containsKey("cancel")) {
@@ -120,11 +130,13 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         String username = formData.getFirst("username");
         String password = formData.getFirst("password");
         if(username.equals(password)) {
-            log.info("AUTHENTICATE token custom provider: " + username);
+            String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("state");
+            //Check in keycloak / SIMVA API username is in one of the study groups
+            //TODO log in to SIMVA API
+            logger.info("AUTHENTICATE token custom provider: " + username);
             if(!validateForm(context, formData)) {
                 StringBuilder studyurl = new StringBuilder();
                 studyurl.append("");
-                String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("state");
                 if(study != "") {
                     studyurl.append("&state=").append(study);
                 }
@@ -139,7 +151,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 context.success(); // Proceed if token is valid
             }
         } else {
-            log.info("AUTHENTICATE username password custom provider: " + username);
+            logger.info("AUTHENTICATE username password custom provider: " + username);
             if(!validateForm(context, formData))  {
                 // Create a form error response
                 Response challengeResponse = context.form()
