@@ -40,18 +40,13 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
      */
     @Override
     public void authenticate(AuthenticationFlowContext context) {
-        //logMap(context.getHttpRequest().getUri().getQueryParameters());
+        logMap(context.getHttpRequest().getUri().getQueryParameters());
         String tokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("token");
-        if(tokenPresent == null) {
-            log.info("AUTHENTICATE username/password custom provider");
-        } else {
-            log.info("AUTHENTICATE token custom provider");
-        }
+        
         MultivaluedMap<String, String> formData = new MultivaluedHashMap<>();
         String loginHint = context.getAuthenticationSession().getClientNote(OIDCLoginProtocol.LOGIN_HINT_PARAM);
 
         String rememberMeUsername = AuthenticationManager.getRememberMeUsername(context.getSession());
-
         if (context.getUser() != null) {
             LoginFormsProvider form = context.form();
             form.setAttribute(LoginFormsProvider.USERNAME_HIDDEN, true);
@@ -68,13 +63,25 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 }
             }
         }
-        Response challengeResponse = challenge(context, formData);
-        context.challenge(challengeResponse);
+
+        if(tokenPresent == null) {
+            log.info("AUTHENTICATE username/password custom provider");
+            Response challengeResponse = challenge(context.form(), formData);
+            context.challenge(challengeResponse);
+        } else {
+            StringBuilder studyurl = new StringBuilder();
+            studyurl.append("");
+            String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("state");
+            if(study != "") {
+                studyurl.append("&state=").append(study);
+            }
+            log.info("AUTHENTICATE token custom provider");
+            Response challengeResponse = challenge(context.form().setAttribute("studyurl", studyurl.toString()), formData);
+            context.challenge(challengeResponse);
+        }
     }
 
-    protected Response challenge(AuthenticationFlowContext context, MultivaluedMap<String, String> formData) {
-        LoginFormsProvider forms = context.form();
-
+    protected Response challenge(LoginFormsProvider forms, MultivaluedMap<String, String> formData) {
         if (formData.size() > 0) forms.setFormData(formData);
 
         return forms.createLoginUsernamePassword();
@@ -102,7 +109,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
 
     @Override
     public void action(AuthenticationFlowContext context) {
-        //logMap(context.getHttpRequest().getUri().getQueryParameters());
+        logMap(context.getHttpRequest().getUri().getQueryParameters());
         log.info("CUSTOMER PROVIDER action");
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
         //logMap(formData);
@@ -115,10 +122,17 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         if(username.equals(password)) {
             log.info("AUTHENTICATE token custom provider: " + username);
             if(!validateForm(context, formData)) {
+                StringBuilder studyurl = new StringBuilder();
+                studyurl.append("");
+                String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("state");
+                if(study != "") {
+                    studyurl.append("&state=").append(study);
+                }
                 // Create a form error response
                 Response challengeResponse = context.form()
                     .setError("Missing or invalid token.")
                     .setAttribute("token", "true")
+                    .setAttribute("studyurl", studyurl.toString())
                     .createForm("login.ftl");
                 context.challenge(challengeResponse);
             } else {
