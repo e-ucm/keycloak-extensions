@@ -134,11 +134,12 @@
                     tokenLogin.parentElement.removeChild(tokenLogin);
                 }else{
                     var username = document.getElementById("username");
+                    username.value="";
                     var password = document.getElementById("password");
+                    password.value="";
                     username.oninput = function(){
                         password.value = username.value;
                     };
-
                 }
             </script>
         </div>
