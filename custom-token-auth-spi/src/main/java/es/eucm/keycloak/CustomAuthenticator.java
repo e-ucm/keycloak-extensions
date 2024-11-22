@@ -36,8 +36,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
             if(!this.client.isAuthentificated()) {
                 this.client.authenticate();
             }
-            this.client.sendGetRequest("/studies");
-        } catch(Exception e) {
+        } catch(IOException e) {
             logger.info(e.toString());
         }
     }
@@ -131,6 +130,11 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         String password = formData.getFirst("password");
         if(username.equals(password)) {
             String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("state");
+            try {
+                this.client.sendGetRequest("/studies/" + study + "/groups");
+            } catch(IOException e) {
+                logger.info(e.toString());
+            }
             //Check in keycloak / SIMVA API username is in one of the study groups
             //TODO log in to SIMVA API
             logger.info("AUTHENTICATE token custom provider: " + username);

@@ -4,152 +4,141 @@ import es.eucm.keycloak.ApiConfig;
 
 import org.jboss.logging.Logger;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.Base64;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.List;
+import java.util.HashMap;
+import java.util.Collections;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.core.type.TypeReference;
+import okhttp3.*;
 
 public class SimvaApiClient {
     private static final Logger logger = Logger.getLogger(SimvaApiClient.class);
 
     private ApiConfig apiConfig;
     private String bearerToken;
-
+    private OkHttpClient client;
     public SimvaApiClient() {
         this.apiConfig = new ApiConfig();
         this.apiConfig.printConfig();
+        try {
+            // Create a new HTTP client
+            this.client = new OkHttpClient().newBuilder().build();
+        } catch(Exception e) {
+            logger.info(e.toString());
+        }
     }
 
     public boolean isAuthentificated() {
         return this.bearerToken != null;
     }
 
-    public void authenticate() throws Exception {
+    public void authenticate() throws IOException {
         // Create an ObjectMapper instance
         ObjectMapper objectMapper = new ObjectMapper();
-
         // Create a JSON object using ObjectNode
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("username", this.apiConfig.getAdminUsername());
         payload.put("password", this.apiConfig.getAdminPassword());
-
         // Convert the JSON object to a string
         String jsonPayload = objectMapper.writeValueAsString(payload);
-
+        logger.info("Payload : " + jsonPayload);
         // Define the API URL
-        String apiUrl = this.apiConfig.getApiUrl() + "/users/login";
-
-        // Make the POST request
-        HttpURLConnection connection = (HttpURLConnection) new URL(apiUrl).openConnection();
-        connection.setRequestMethod("POST");
-        connection.setRequestProperty("Content-Type", "application/json");
-        connection.setDoOutput(true);
-
-        // Send the request body (JSON payload)
-        try (OutputStream os = connection.getOutputStream()) {
-            byte[] input = jsonPayload.getBytes("utf-8");
-            os.write(input, 0, input.length);
-        }
-
-        // Get the response
-        int responseCode = connection.getResponseCode();
-        if (responseCode != HttpURLConnection.HTTP_OK) {
-            throw new RuntimeException("Failed : HTTP error code : " + responseCode);
-        }
-
-        // Read the response
-        BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-        String inputLine;
-        StringBuffer response = new StringBuffer();
-        while ((inputLine = in.readLine()) != null) {
-            response.append(inputLine);
-        }
-        in.close();
-
-        // Parse the JSON response
-        objectMapper = new ObjectMapper();
-        JsonNode jsonNode = objectMapper.readTree(response.toString());
-
-        // Access the token
-        this.bearerToken = "Bearer " + jsonNode.get("token").asText();
-        logger.info(this.bearerToken);
+        String apiUrl = "/users/login";
+        logger.info("concat_url : " +  apiUrl);
+        // Read the body of the response into a hashmap
+        Map<String,Object> responseMap = this.sendPostRequest(apiUrl, jsonPayload);
+        // Read the value of the "access_token" key from the hashmap 
+        this.bearerToken = "Bearer " + (String)responseMap.get("token");
+        logger.info("Token: " + this.bearerToken);
     }
 
     // Method to send GET request
-    public JsonNode sendGetRequest(String concat_url) throws Exception {
+    public Map<String, Object> sendGetRequest(String concat_url) throws IOException {
         // Construct the URL
         String urlString = this.apiConfig.getApiUrl() + concat_url;
         logger.info("urlString: " + urlString);
         URL url = new URL(urlString);
-
-        // Open connection
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("GET");
-
-        // Add Bearer Authentication header
-        connection.setRequestProperty("Authorization", this.bearerToken);
-
-        // Read the response
-        int responseCode = connection.getResponseCode();
-        logger.info("Response Code: " + responseCode);
-
-        BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-        String inputLine;
-        StringBuffer response = new StringBuffer();
-        while ((inputLine = in.readLine()) != null) {
-            response.append(inputLine);
+        // Build the request object, with method, headers
+        Request request;
+        if(this.isAuthentificated()) {
+            request = new Request.Builder()
+                .url(urlString)
+                .get()
+                .addHeader("Authorization", this.bearerToken)
+                .addHeader("Content-Type", "application/json")
+                .build();
+        } else {
+             request = new Request.Builder()
+                .url(urlString)
+                .get()
+                .addHeader("Content-Type", "application/json")
+                .build();
         }
-        in.close();
-
-        // Print the response
-        logger.info("Response: " + response.toString());
-
+        // Perform the request, this potentially throws an IOException
+        Response response = this.client.newCall(request).execute();
         ObjectMapper objectMapper = new ObjectMapper();
-        JsonNode jsonNode = objectMapper.readTree(response.toString());
-        return jsonNode;
+        JsonNode jsonNode = objectMapper.readTree(response.body().byteStream());
+        return this.parseJson(objectMapper, jsonNode);
     }
 
-    // Method to send POST request with JSON body (if needed)
-    public void sendPostRequest(String concat_url, String jsonBody) throws Exception {
+    public Map<String, Object> parseJson(ObjectMapper objectMapper, JsonNode jsonNode) {
+        if (jsonNode.isArray()) {
+            List<Map<String, Object>> responseList = objectMapper.convertValue(jsonNode, new TypeReference<>() {});
+            Map<String, Object> result = new HashMap<>();
+            for (int i = 0; i < responseList.size(); i++) {
+                result.put(String.valueOf(i), responseList.get(i)); // Use index as key
+            }
+            logger.info("Parsed as a List, converted to Map: " + result);
+            return result;
+        } else if (jsonNode.isObject()) {
+            Map<String, Object> responseMap = objectMapper.convertValue(jsonNode, new TypeReference<>() {});
+            logger.info("Parsed as a Map: " + responseMap);
+            return responseMap;
+        } else {
+            logger.info("Unexpected JSON structure: " + jsonNode);
+            return Collections.emptyMap(); // Return an empty map for unexpected cases
+        }
+    }
+
+    //// Method to send POST request with JSON body (if needed)
+    public Map<String, Object> sendPostRequest(String concat_url, String jsonBody) throws IOException {
         // Construct the URL
         String urlString = this.apiConfig.getApiUrl() + concat_url;
         logger.info("urlString: " + urlString);
         URL url = new URL(urlString);
 
-        // Open connection
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("POST");
-        connection.setDoOutput(true);
-
-        // Add Bearer Authentication header
-        connection.setRequestProperty("Authorization", this.bearerToken);
-        connection.setRequestProperty("Content-Type", "application/json");
-
-        // Send the request body (JSON)
-        try (OutputStream os = connection.getOutputStream()) {
-            byte[] input = jsonBody.getBytes("utf-8");
-            os.write(input, 0, input.length);
+        // Create the request body
+        MediaType mediaType = MediaType.parse("application/json");
+        RequestBody body = RequestBody.create(jsonBody, mediaType);
+        // Build the request object, with method, headers
+        Request request;
+        if(this.isAuthentificated()) {
+            request = new Request.Builder()
+                    .url(urlString)
+                    .method("POST", body)
+                    .addHeader("Authorization", this.bearerToken)
+                    .addHeader("Content-Type", "application/json")
+                    .build();   
+        } else {
+            request = new Request.Builder()
+                .url(urlString)
+                .method("POST", body)
+                .addHeader("Content-Type", "application/json")
+                .build();
         }
 
-        // Read the response
-        int responseCode = connection.getResponseCode();
-        logger.info("Response Code: " + responseCode);
-
-        BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-        String inputLine;
-        StringBuffer response = new StringBuffer();
-        while ((inputLine = in.readLine()) != null) {
-            response.append(inputLine);
-        }
-        in.close();
-
-        // Print the response
-        logger.info("Response: " + response.toString());
+        // Perform the request, this potentially throws an IOException
+        Response response = this.client.newCall(request).execute();
+        // Read the body of the response into a map
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = objectMapper.readTree(response.body().byteStream());
+        return this.parseJson(objectMapper, jsonNode);
     }
 }
