@@ -1,4 +1,6 @@
-package es.eucm.keycloak;
+package es.eucm.keycloak.authentificators.browser;
+
+import es.eucm.keycloak.authentificators.browser.CustomAuthenticator;
 
 import org.keycloak.Config;
 import org.keycloak.authentication.Authenticator;
@@ -18,9 +20,8 @@ public class CustomAuthenticatorFactory implements AuthenticatorFactory {
     private final Logger log = LoggerFactory.getLogger(CustomAuthenticatorFactory.class);
     public static final String PROVIDER_ID = "token-authenticator";
 
-    AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = new AuthenticationExecutionModel.Requirement[]{AuthenticationExecutionModel.Requirement.REQUIRED, AuthenticationExecutionModel.Requirement.ALTERNATIVE, AuthenticationExecutionModel.Requirement.DISABLED};
-
-
+    AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = new AuthenticationExecutionModel.Requirement[]{AuthenticationExecutionModel.Requirement.REQUIRED};
+    
     @Override
     public Authenticator create(KeycloakSession session) {
         return new CustomAuthenticator(session);

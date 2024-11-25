@@ -1,6 +1,6 @@
-package es.eucm.keycloak;
+package es.eucm.keycloak.authentificators.utils;
 
-import es.eucm.keycloak.SimvaApiConfig;
+import es.eucm.keycloak.authentificators.utils.SimvaApiConfig;
 
 import org.jboss.logging.Logger;
 

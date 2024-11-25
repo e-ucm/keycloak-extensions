@@ -1,6 +1,6 @@
-package es.eucm.keycloak;
+package es.eucm.keycloak.authentificators.utils;
 
-import es.eucm.keycloak.KeycloakConfig;
+import es.eucm.keycloak.authentificators.utils.KeycloakConfig;
 
 import org.jboss.logging.Logger;
 
