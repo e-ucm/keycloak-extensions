@@ -163,7 +163,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                                     logger.info(context.getSession().users().toString());
                                     context.success(); // Proceed if token is valid
                                     return;
-                                } 
+                                }
                             } catch(IOException e){
                                 logger.info(e.toString());
                             }
