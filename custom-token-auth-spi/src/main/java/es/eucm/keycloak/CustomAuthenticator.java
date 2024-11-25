@@ -1,5 +1,8 @@
 package es.eucm.keycloak;
 
+import es.eucm.keycloak.SimvaApiClient;
+import es.eucm.keycloak.KeycloakOAuth2Client;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.keycloak.authentication.AuthenticationFlowContext;
 import org.keycloak.authentication.AuthenticationFlowError;
@@ -18,7 +21,7 @@ import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import java.io.IOException;
-
+import java.util.Map;
 
 public class CustomAuthenticator extends AbstractUsernameFormAuthenticator implements Authenticator {
 
@@ -27,18 +30,20 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
     private ObjectMapper objectMapper = new ObjectMapper();
 
     private final KeycloakSession session;
-    private SimvaApiClient client;
+    private SimvaApiClient simvaClient;
+    private KeycloakOAuth2Client keycloakClient;
 
     public CustomAuthenticator(KeycloakSession session) {
         this.session = session;
-        this.client = new SimvaApiClient();  // Initialize client from environment variables
+        this.simvaClient = new SimvaApiClient();  // Initialize client from environment variables
         try {
-            if(!this.client.isAuthentificated()) {
-                this.client.authenticate();
+            if(!this.simvaClient.isAuthentificated()) {
+                this.simvaClient.authenticate();
             }
         } catch(IOException e) {
             logger.info(e.toString());
         }
+        this.keycloakClient = new KeycloakOAuth2Client();
     }
 
     /**
@@ -121,17 +126,51 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         logMap(context.getHttpRequest().getUri().getQueryParameters());
         logger.info("CUSTOMER PROVIDER action");
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
-        //logMap(formData);
+        logMap(formData);
         if (formData.containsKey("cancel")) {
             context.cancelLogin();
             return;
         }
         String username = formData.getFirst("username");
         String password = formData.getFirst("password");
-        if(username.equals(password)) {
+        try {
+            if(this.keycloakClient.validateUserCredentials(username, password)) {
+                logger.info("Validated user credentials");
+            } else {
+                logger.info("Invalidated user credentials");
+            }
+        } catch(IOException e){
+            logger.info(e.toString());
+        }
+        String tokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("token");
+        logger.info("token Present : " + tokenPresent);
+        if(tokenPresent != null) {
             String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("state");
             try {
-                this.client.sendGetRequest("/studies/" + study + "/groups");
+                Map<String, Object> groups = this.simvaClient.sendGetRequest("/studies/" + study + "/groups");
+                for(Object groupObj : groups.values()) {
+                        // Check if groupObj is indeed a Map
+                        if (groupObj instanceof Map) {
+                            Map<String, Object> group = (Map<String, Object>) groupObj;
+                            logger.info("Group : " + group.get("_id"));
+                            logger.info("Participants : " + group.get("participants"));
+                            try {
+                                // Create a new username based on your logic
+                                String updatedUsername = group.get("_id") + "_" + username;
+                                if(this.keycloakClient.validateUserCredentials(updatedUsername, password)) {
+                                    // Set the new username in the authentication session
+                                    context.setUser(context.getSession().users().getUserByUsername(context.getRealm(), updatedUsername));
+                                    logger.info(context.getSession().users().toString());
+                                    context.success(); // Proceed if token is valid
+                                    return;
+                                } 
+                            } catch(IOException e){
+                                logger.info(e.toString());
+                            }
+                        } else {
+                            logger.warn("Unexpected group type: " + groupObj.getClass().getName());
+                        }
+                }
             } catch(IOException e) {
                 logger.info(e.toString());
             }

@@ -2,8 +2,8 @@ package es.eucm.keycloak;
 
 import org.jboss.logging.Logger;
 
-public class ApiConfig {
-    private static final Logger logger = Logger.getLogger(ApiConfig.class);
+public class SimvaApiConfig {
+    private static final Logger logger = Logger.getLogger(SimvaApiConfig.class);
 
     // Define configuration variables
     private static final String SIMVA_API_URL = "SIMVA_API_URL";
@@ -15,26 +15,10 @@ public class ApiConfig {
     private String simvaApiAdminPassword;
 
     // Initialize the config from environment variables
-    public ApiConfig() {
+    public SimvaApiConfig() {
         this.simvaApiUrl = System.getenv(SIMVA_API_URL);
         this.simvaApiAdminUsername = System.getenv(SIMVA_API_ADMIN_USERNAME);
         this.simvaApiAdminPassword = System.getenv(SIMVA_API_ADMIN_PASSWORD);
-        // Log environment variable loading
-        //if (simvaApiUrl == null) {
-        //    logger.warn(SIMVA_API_URL + " is not set.");
-        //} else {
-        //    logger.info(SIMVA_API_URL + " loaded: " + simvaApiUrl);
-        //}
-        //if (simvaApiAdminUsername == null) {
-        //    logger.warn(SIMVA_API_ADMIN_USERNAME + " is not set.");
-        //} else {
-        //    logger.info(SIMVA_API_ADMIN_USERNAME + " loaded: " + simvaApiAdminUsername);
-        //}
-        //if (simvaApiAdminPassword == null) {
-        //    logger.warn(SIMVA_API_ADMIN_PASSWORD + " is not set.");
-        //} else {
-        //    logger.info(SIMVA_API_ADMIN_PASSWORD + " loaded: " + simvaApiAdminPassword);
-        //}
     }
 
     // Getters for each environment variable

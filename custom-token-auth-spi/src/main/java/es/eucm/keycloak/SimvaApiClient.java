@@ -1,6 +1,6 @@
 package es.eucm.keycloak;
 
-import es.eucm.keycloak.ApiConfig;
+import es.eucm.keycloak.SimvaApiConfig;
 
 import org.jboss.logging.Logger;
 
@@ -21,11 +21,11 @@ import okhttp3.*;
 public class SimvaApiClient {
     private static final Logger logger = Logger.getLogger(SimvaApiClient.class);
 
-    private ApiConfig apiConfig;
+    private SimvaApiConfig apiConfig;
     private String bearerToken;
     private OkHttpClient client;
     public SimvaApiClient() {
-        this.apiConfig = new ApiConfig();
+        this.apiConfig = new SimvaApiConfig();
         this.apiConfig.printConfig();
         try {
             // Create a new HTTP client
