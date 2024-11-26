@@ -1,7 +1,7 @@
-package es.eucm.keycloak.authentificators.browser;
+package es.eucm.keycloak;
 
-import es.eucm.keycloak.authentificators.utils.SimvaApiClient;
-import es.eucm.keycloak.authentificators.utils.KeycloakOAuth2Client;
+import es.eucm.utils.SimvaApiClient;
+import es.eucm.utils.KeycloakOAuth2Client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.keycloak.authentication.AuthenticationFlowContext;

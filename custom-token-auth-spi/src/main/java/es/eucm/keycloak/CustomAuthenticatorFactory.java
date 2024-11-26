@@ -1,6 +1,6 @@
-package es.eucm.keycloak.authentificators.browser;
+package es.eucm.keycloak;
 
-import es.eucm.keycloak.authentificators.browser.CustomAuthenticator;
+import es.eucm.keycloak.CustomAuthenticator;
 
 import org.keycloak.Config;
 import org.keycloak.authentication.Authenticator;

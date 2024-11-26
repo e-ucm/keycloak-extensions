@@ -1,6 +1,6 @@
-package es.eucm.keycloak.authentificators.utils;
+package es.eucm.utils;
 
-import es.eucm.keycloak.authentificators.utils.SimvaApiConfig;
+import es.eucm.utils.SimvaApiConfig;
 
 import org.jboss.logging.Logger;
 
@@ -26,7 +26,7 @@ public class SimvaApiClient {
     private OkHttpClient client;
     public SimvaApiClient() {
         this.apiConfig = new SimvaApiConfig();
-        this.apiConfig.printConfig();
+        //this.apiConfig.printConfig();
         try {
             // Create a new HTTP client
             this.client = new OkHttpClient().newBuilder().build();
@@ -48,10 +48,8 @@ public class SimvaApiClient {
         payload.put("password", this.apiConfig.getAdminPassword());
         // Convert the JSON object to a string
         String jsonPayload = objectMapper.writeValueAsString(payload);
-        logger.info("Payload : " + jsonPayload);
         // Define the API URL
         String apiUrl = "/users/login";
-        logger.info("concat_url : " +  apiUrl);
         // Read the body of the response into a hashmap
         Map<String,Object> responseMap = this.sendPostRequest(apiUrl, jsonPayload);
         // Read the value of the "access_token" key from the hashmap 

@@ -1,4 +1,4 @@
-package es.eucm.keycloak.authentificators.utils;
+package es.eucm.utils;
 
 import org.jboss.logging.Logger;
 

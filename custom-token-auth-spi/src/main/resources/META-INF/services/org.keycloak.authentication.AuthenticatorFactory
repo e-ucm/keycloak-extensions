@@ -1,2 +1,2 @@
-es.eucm.keycloak.authentificators.directGrant.ValidateCustomUsernameAuthenticator
-es.eucm.keycloak.authentificators.browser.CustomAuthenticatorFactory
+es.eucm.keycloak.CustomAuthenticatorFactory
+es.eucm.keycloak.ValidateTokenUsernameAuthenticator

@@ -1,6 +1,6 @@
-package es.eucm.keycloak.authentificators.utils;
+package es.eucm.utils;
 
-import es.eucm.keycloak.authentificators.utils.KeycloakConfig;
+import es.eucm.utils.KeycloakConfig;
 
 import org.jboss.logging.Logger;
 
@@ -19,7 +19,7 @@ public class KeycloakOAuth2Client {
 
     public KeycloakOAuth2Client() {
         this.apiConfig = new KeycloakConfig();
-        this.apiConfig.printConfig();
+        //this.apiConfig.printConfig();
         this.httpClient = new OkHttpClient();
         this.objectMapper = new ObjectMapper();
     }
