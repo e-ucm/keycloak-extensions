@@ -1,7 +1,6 @@
 package es.eucm.keycloak;
 
-import es.eucm.utils.SimvaApiClient;
-import es.eucm.utils.KeycloakOAuth2Client;
+import es.eucm.utils.SimvaKeycloakCheck;
 
 import org.keycloak.authentication.AuthenticationFlowContext;
 import org.keycloak.authentication.AuthenticationFlowError;
@@ -25,10 +24,10 @@ import org.slf4j.LoggerFactory;
 
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
-import java.io.IOException;
-import java.util.LinkedList;
+
 import java.util.List;
 import java.util.ArrayList;
+import java.util.AbstractMap.SimpleEntry;
 
 import static org.keycloak.authentication.authenticators.util.AuthenticatorUtils.getDisabledByBruteForceEventError;
 
@@ -36,8 +35,8 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
     
     private final Logger logger = LoggerFactory.getLogger(ValidateTokenUsernameAuthenticator.class);
     public static final String PROVIDER_ID = "direct-grant-validate-token-username";
-    private SimvaApiClient simvaClient;
-    private KeycloakOAuth2Client keycloakClient;
+
+    private SimvaKeycloakCheck simvaKeycloakCheck;
 
     @Override
     public void authenticate(AuthenticationFlowContext context) {
@@ -46,8 +45,28 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
         MultivaluedMap<String, String> inputData = context.getHttpRequest().getDecodedFormParameters();
         logMap(inputData);
         String username = inputData.getFirst(AuthenticationManager.FORM_USERNAME);
-        logger.info("Username found is : " + username);
-
+        this.simvaKeycloakCheck = new SimvaKeycloakCheck();
+        if (username.contains("/")) {
+            // Split by "/"
+            String[] parts = username.split("/");
+            // Process the parts
+            String study= study=parts[0]; // Before "/"
+            logger.info("Study found is : " + study);
+            username=parts[1]; // After "/"
+            logger.info("Username found is : " + username);
+            SimpleEntry<Boolean, String> validate = this.simvaKeycloakCheck.checkTokenInStudy(study, username);
+            if(validate.getKey()) {
+                username = validate.getValue();
+            }
+        } else {
+            String password = inputData.getFirst("password");
+            if(this.simvaKeycloakCheck.checkUsernamePassword(username, password)) {
+                logger.info("Username valid");
+            } else {
+                logger.info("Username not valid");
+            }
+        }
+        
         if (username == null) {
             context.getEvent().error(Errors.USER_NOT_FOUND);
             Response challengeResponse = errorResponse(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_request", "Missing parameter: username");
@@ -65,26 +84,6 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
             Response challengeResponse = errorResponse(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_request", "Invalid user credentials");
             context.failure(AuthenticationFlowError.INVALID_USER, challengeResponse);
             return;
-        }
-
-        this.simvaClient = new SimvaApiClient();  // Initialize client from environment variables
-        try {
-            if(!this.simvaClient.isAuthentificated()) {
-                this.simvaClient.authenticate();
-            }
-        } catch(IOException e) {
-            logger.info(e.toString());
-        }
-        this.keycloakClient = new KeycloakOAuth2Client();
-
-        try {
-            if(this.keycloakClient.validateUserCredentials(username, username)) {
-                logger.info("Validated token");
-            } else {
-                logger.info("Invalidated token");
-            }
-        } catch(IOException e){
-            logger.info(e.toString());
         }
 
         if (user == null) {

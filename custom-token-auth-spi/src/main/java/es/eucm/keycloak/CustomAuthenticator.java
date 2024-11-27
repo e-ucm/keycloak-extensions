@@ -1,7 +1,6 @@
 package es.eucm.keycloak;
 
-import es.eucm.utils.SimvaApiClient;
-import es.eucm.utils.KeycloakOAuth2Client;
+import es.eucm.utils.SimvaKeycloakCheck;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.keycloak.authentication.AuthenticationFlowContext;
@@ -20,8 +19,8 @@ import org.slf4j.LoggerFactory;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
-import java.io.IOException;
-import java.util.Map;
+
+import java.util.AbstractMap.SimpleEntry;
 
 public class CustomAuthenticator extends AbstractUsernameFormAuthenticator implements Authenticator {
 
@@ -30,20 +29,11 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
     private ObjectMapper objectMapper = new ObjectMapper();
 
     private final KeycloakSession session;
-    private SimvaApiClient simvaClient;
-    private KeycloakOAuth2Client keycloakClient;
+    private SimvaKeycloakCheck simvaKeycloakCheck;
 
     public CustomAuthenticator(KeycloakSession session) {
         this.session = session;
-        this.simvaClient = new SimvaApiClient();  // Initialize client from environment variables
-        try {
-            if(!this.simvaClient.isAuthentificated()) {
-                this.simvaClient.authenticate();
-            }
-        } catch(IOException e) {
-            logger.info(e.toString());
-        }
-        this.keycloakClient = new KeycloakOAuth2Client();
+        this.simvaKeycloakCheck = new SimvaKeycloakCheck();
     }
 
     /**
@@ -123,92 +113,62 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
 
     @Override
     public void action(AuthenticationFlowContext context) {
-        logMap(context.getHttpRequest().getUri().getQueryParameters());
         logger.info("CUSTOMER PROVIDER action");
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
-        logMap(formData);
-        if (formData.containsKey("cancel")) {
-            context.cancelLogin();
-            return;
-        }
-        String username = formData.getFirst("username");
-        String password = formData.getFirst("password");
-        try {
-            if(this.keycloakClient.validateUserCredentials(username, password)) {
-                logger.info("Validated user credentials");
-            } else {
-                logger.info("Invalidated user credentials");
-            }
-        } catch(IOException e){
-            logger.info(e.toString());
-        }
-        String tokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("token");
-        logger.info("token Present : " + tokenPresent);
-        if(tokenPresent != null) {
-            String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("state");
-            try {
-                Map<String, Object> groups = this.simvaClient.sendGetRequest("/studies/" + study + "/groups");
-                for(Object groupObj : groups.values()) {
-                        // Check if groupObj is indeed a Map
-                        if (groupObj instanceof Map) {
-                            Map<String, Object> group = (Map<String, Object>) groupObj;
-                            logger.info("Group : " + group.get("_id"));
-                            logger.info("Participants : " + group.get("participants"));
-                            try {
-                                // Create a new username based on your logic
-                                String updatedUsername = group.get("_id") + "_" + username;
-                                if(this.keycloakClient.validateUserCredentials(updatedUsername, password)) {
-                                    // Set the new username in the authentication session
-                                    context.setUser(context.getSession().users().getUserByUsername(context.getRealm(), updatedUsername));
-                                    logger.info(context.getSession().users().toString());
-                                    context.success(); // Proceed if token is valid
-                                    return;
-                                }
-                            } catch(IOException e){
-                                logger.info(e.toString());
-                            }
-                        } else {
-                            logger.warn("Unexpected group type: " + groupObj.getClass().getName());
-                        }
-                }
-            } catch(IOException e) {
-                logger.info(e.toString());
-            }
-            //Check in keycloak / SIMVA API username is in one of the study groups
-            //TODO log in to SIMVA API
-            logger.info("AUTHENTICATE token custom provider: " + username);
-            if(!validateForm(context, formData)) {
-                StringBuilder studyurl = new StringBuilder();
-                studyurl.append("");
-                if(study != "") {
-                    studyurl.append("&state=").append(study);
-                }
-                // Create a form error response
-                Response challengeResponse = context.form()
-                    .setError("Missing or invalid token.")
-                    .setAttribute("token", "true")
-                    .setAttribute("studyurl", studyurl.toString())
-                    .createForm("login.ftl");
-                context.challenge(challengeResponse);
-            } else {
-                context.success(); // Proceed if token is valid
-            }
+        if(validateUserAndPassword(context, formData)) {
+            context.success(); // Proceed if token is valid
         } else {
-            logger.info("AUTHENTICATE username password custom provider: " + username);
-            if(!validateForm(context, formData))  {
-                // Create a form error response
-                Response challengeResponse = context.form()
-                    .setError("Missing or invalid username or password.")
-                    .createForm("login.ftl");
-                context.challenge(challengeResponse);
+            logMap(context.getHttpRequest().getUri().getQueryParameters());
+            logMap(formData);
+            if (formData.containsKey("cancel")) {
+                context.cancelLogin();
+                return;
+            }
+            String username = formData.getFirst("username");
+            String password = formData.getFirst("password");
+            String tokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("token");
+            logger.info("token Present : " + tokenPresent);
+            if(tokenPresent != null) {
+                logger.info("AUTHENTICATE token custom provider: " + username);
+                String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("state");
+                logger.info("Study: " + study);
+                SimpleEntry<Boolean, String> validate = this.simvaKeycloakCheck.checkTokenInStudy(study, username);
+                if(validate.getKey()) {
+                    String updatedUsername = validate.getValue();
+                    // Set the new username in the authentication session
+                    context.setUser(context.getSession().users().getUserByUsername(context.getRealm(), updatedUsername));
+                    context.success(); // Proceed if token is valid
+                    return;
+                } else {
+                    StringBuilder studyurl = new StringBuilder();
+                    studyurl.append("");
+                    if(study != "") {
+                        studyurl.append("&state=").append(study);
+                    }
+                    // Create a form error response
+                    Response challengeResponse = context.form()
+                        .setError("Missing or invalid token.")
+                        .setAttribute("token", "true")
+                        .setAttribute("studyurl", studyurl.toString())
+                        .createForm("login.ftl");
+                    context.challenge(challengeResponse);
+                }
             } else {
-                context.success(); // Proceed if token is valid
+                logger.info("AUTHENTICATE username password custom provider: " + username);
+                if(this.simvaKeycloakCheck.checkUsernamePassword(username, password)) {
+                    // Set the username in the authentication session
+                    context.setUser(context.getSession().users().getUserByUsername(context.getRealm(), username));
+                    context.success(); // Proceed if token is valid
+                    return;
+                } else {
+                    // Create a form error response
+                    Response challengeResponse = context.form()
+                        .setError("Missing or invalid username or password.")
+                        .createForm("login.ftl");
+                    context.challenge(challengeResponse);
+                }
             }
         }
-    }
-
-    protected boolean validateForm(AuthenticationFlowContext context, MultivaluedMap<String, String> formData) {
-        return validateUserAndPassword(context, formData);
     }
     
     @Override
