@@ -13,14 +13,12 @@ import java.io.IOException;
 public class KeycloakOAuth2Client {
     private static final Logger logger = Logger.getLogger(KeycloakOAuth2Client.class);
 
-    private KeycloakConfig apiConfig;
-    private final OkHttpClient httpClient;
+    private static final OkHttpClient sharedHttpClient = new OkHttpClient(); // Singleton instance
+    private static final KeycloakConfig apiConfig = new KeycloakConfig();
     private final ObjectMapper objectMapper;
+    private String accessToken;
 
     public KeycloakOAuth2Client() {
-        this.apiConfig = new KeycloakConfig();
-        //this.apiConfig.printConfig();
-        this.httpClient = new OkHttpClient();
         this.objectMapper = new ObjectMapper();
     }
 
@@ -28,30 +26,37 @@ public class KeycloakOAuth2Client {
         logger.info("validateUserCredentials : " + username);
         RequestBody formBody = new FormBody.Builder()
                 .add("grant_type", "password")
-                .add("client_id", this.apiConfig.getClientId())
-                .add("client_secret", this.apiConfig.getClientSecret())
+                .add("client_id", apiConfig.getClientId())
+                .add("client_secret", apiConfig.getClientSecret())
                 .add("username", username)
                 .add("password", password)
                 .build();
 
         Request request = new Request.Builder()
-                .url(this.apiConfig.getKeycloakTokenUrl())
+                .url(apiConfig.getKeycloakTokenUrl())
                 .post(formBody)
                 .build();
 
-        try (Response response = httpClient.newCall(request).execute()) {
+        try (Response response = sharedHttpClient.newCall(request).execute()) { // Use shared instance
             if (response.isSuccessful()) {
-                // If we receive an access token, the credentials are valid
                 String responseBody = response.body().string();
                 JsonNode jsonNode = objectMapper.readTree(responseBody);
-                String accessToken = jsonNode.get("access_token").asText();
-                logger.info("Access Token: " + accessToken);
+                this.accessToken = jsonNode.get("access_token").asText();
+                logger.info("Access Token: Bearer " + this.accessToken);
                 return true;
             } else {
-                // Invalid credentials or other error
                 logger.info("Error: " + response.code() + " - " + response.body().string());
                 return false;
             }
         }
+    }
+
+    public void disconnect() {
+        if (this.accessToken != null) {
+            logger.info("Disconnecting and invalidating access token.");
+        }
+        sharedHttpClient.connectionPool().evictAll();
+        sharedHttpClient.dispatcher().executorService().shutdown();
+        logger.info("OkHttpClient resources cleaned up.");
     }
 }

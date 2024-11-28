@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
+import java.io.IOException;
 
 import java.util.AbstractMap.SimpleEntry;
 
@@ -29,11 +30,10 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
     private ObjectMapper objectMapper = new ObjectMapper();
 
     private final KeycloakSession session;
-    private SimvaKeycloakCheck simvaKeycloakCheck;
+    private static SimvaKeycloakCheck simvaKeycloakCheck= new SimvaKeycloakCheck();
 
     public CustomAuthenticator(KeycloakSession session) {
         this.session = session;
-        this.simvaKeycloakCheck = new SimvaKeycloakCheck();
     }
 
     /**
@@ -139,7 +139,13 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 logger.info("AUTHENTICATE token custom provider: " + username);
                 String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
                 logger.info("Study: " + study);
-                SimpleEntry<Boolean, String> validate = this.simvaKeycloakCheck.checkTokenInStudy(study, username);
+                SimpleEntry<Boolean, String> validate;
+                try {
+                    validate = simvaKeycloakCheck.checkTokenInStudy(study, username);
+                } catch(IOException e) {
+                    logger.info(e.toString());
+                    validate = new SimpleEntry<>(false, null);
+                }
                 if(validate.getKey()) {
                     String updatedUsername = validate.getValue();
                     // Set the new username in the authentication session
@@ -164,7 +170,14 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 }
             } else {
                 logger.info("AUTHENTICATE username password custom provider: " + username);
-                if(this.simvaKeycloakCheck.checkUsernamePassword(username, password)) {
+                Boolean valid;
+                try {
+                    valid = simvaKeycloakCheck.checkUsernamePassword(username, password);
+                } catch(IOException e) {
+                    logger.info(e.toString());
+                    valid=false;
+                }
+                if(valid) {
                     // Set the username in the authentication session
                     context.setUser(context.getSession().users().getUserByUsername(context.getRealm(), username));
                     context.success(); // Proceed if token is valid

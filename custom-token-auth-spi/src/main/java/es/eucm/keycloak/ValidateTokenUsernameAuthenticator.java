@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
+import java.io.IOException;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -36,23 +37,35 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
     private final Logger logger = LoggerFactory.getLogger(ValidateTokenUsernameAuthenticator.class);
     public static final String PROVIDER_ID = "direct-grant-validate-token-username";
 
-    private SimvaKeycloakCheck simvaKeycloakCheck;
+    private static SimvaKeycloakCheck simvaKeycloakCheck = new SimvaKeycloakCheck();
 
     @Override
     public void authenticate(AuthenticationFlowContext context) {
         MultivaluedMap<String, String> inputData = context.getHttpRequest().getDecodedFormParameters();
         logMap(inputData);
         String username = inputData.getFirst(AuthenticationManager.FORM_USERNAME);
-        this.simvaKeycloakCheck = new SimvaKeycloakCheck();
         String study = inputData.getFirst("login_hint");
         if (study != null) {
-            SimpleEntry<Boolean, String> validate = this.simvaKeycloakCheck.checkTokenInStudy(study, username);
+            SimpleEntry<Boolean, String> validate;
+            try {
+                validate = simvaKeycloakCheck.checkTokenInStudy(study, username);
+            } catch(IOException e) {
+                logger.info(e.toString());
+                validate = new SimpleEntry<>(false, null);
+            }
             if(validate.getKey()) {
                 username = validate.getValue();
             }
         } else {
             String password = inputData.getFirst("password");
-            if(this.simvaKeycloakCheck.checkUsernamePassword(username, password)) {
+            Boolean valid;
+            try {
+                valid = simvaKeycloakCheck.checkUsernamePassword(username, password);
+            } catch(IOException e) {
+                logger.info(e.toString());
+                valid=false;
+            }
+            if(valid) {
                 logger.info("Username valid");
             } else {
                 logger.info("Username not valid");

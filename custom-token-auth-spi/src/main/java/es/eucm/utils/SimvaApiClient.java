@@ -21,12 +21,10 @@ import okhttp3.*;
 public class SimvaApiClient {
     private static final Logger logger = Logger.getLogger(SimvaApiClient.class);
 
-    private SimvaApiConfig apiConfig;
+    private static SimvaApiConfig apiConfig = new SimvaApiConfig();
     private String bearerToken;
     private OkHttpClient client;
     public SimvaApiClient() {
-        this.apiConfig = new SimvaApiConfig();
-        //this.apiConfig.printConfig();
         try {
             // Create a new HTTP client
             this.client = new OkHttpClient().newBuilder().build();
@@ -44,8 +42,8 @@ public class SimvaApiClient {
         ObjectMapper objectMapper = new ObjectMapper();
         // Create a JSON object using ObjectNode
         ObjectNode payload = objectMapper.createObjectNode();
-        payload.put("username", this.apiConfig.getAdminUsername());
-        payload.put("password", this.apiConfig.getAdminPassword());
+        payload.put("username", apiConfig.getAdminUsername());
+        payload.put("password", apiConfig.getAdminPassword());
         // Convert the JSON object to a string
         String jsonPayload = objectMapper.writeValueAsString(payload);
         // Define the API URL
@@ -60,7 +58,7 @@ public class SimvaApiClient {
     // Method to send GET request
     public Map<String, Object> sendGetRequest(String concat_url) throws IOException {
         // Construct the URL
-        String urlString = this.apiConfig.getApiUrl() + concat_url;
+        String urlString = apiConfig.getApiUrl() + concat_url;
         logger.info("urlString: " + urlString);
         URL url = new URL(urlString);
         // Build the request object, with method, headers
@@ -108,7 +106,7 @@ public class SimvaApiClient {
     //// Method to send POST request with JSON body (if needed)
     public Map<String, Object> sendPostRequest(String concat_url, String jsonBody) throws IOException {
         // Construct the URL
-        String urlString = this.apiConfig.getApiUrl() + concat_url;
+        String urlString = apiConfig.getApiUrl() + concat_url;
         logger.info("urlString: " + urlString);
         URL url = new URL(urlString);
 
