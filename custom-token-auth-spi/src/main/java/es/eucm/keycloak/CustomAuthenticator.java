@@ -45,7 +45,8 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
     @Override
     public void authenticate(AuthenticationFlowContext context) {
         logMap(context.getHttpRequest().getUri().getQueryParameters());
-        String tokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("token");
+        logMap(context.getHttpRequest().getDecodedFormParameters());
+        String simvaUserTokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("simva_user_token");
         
         MultivaluedMap<String, String> formData = new MultivaluedHashMap<>();
         String loginHint = context.getAuthenticationSession().getClientNote(OIDCLoginProtocol.LOGIN_HINT_PARAM);
@@ -68,19 +69,25 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
             }
         }
 
-        if(tokenPresent == null) {
+        if(simvaUserTokenPresent == null) {
             logger.info("AUTHENTICATE username/password custom provider");
             Response challengeResponse = challenge(context.form(), formData);
             context.challenge(challengeResponse);
         } else {
             StringBuilder studyurl = new StringBuilder();
             studyurl.append("");
-            String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("state");
+            String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
             if(study != "") {
-                studyurl.append("&state=").append(study);
+                studyurl.append("&login_hint=").append(study);
             }
+            studyurl.append("&simva_user_token=true");
+            logger.info(studyurl.toString());
             logger.info("AUTHENTICATE token custom provider");
-            Response challengeResponse = challenge(context.form().setAttribute("studyurl", studyurl.toString()), formData);
+            Response challengeResponse = challenge(context.form()
+                .setAttribute("studyurl", studyurl.toString())
+                .setAttribute("simvaUserToken", "true")
+                , formData
+            );
             context.challenge(challengeResponse);
         }
     }
@@ -126,11 +133,11 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
             }
             String username = formData.getFirst("username");
             String password = formData.getFirst("password");
-            String tokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("token");
-            logger.info("token Present : " + tokenPresent);
-            if(tokenPresent != null) {
+            String simvaUserTokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("simva_user_token");
+            logger.info("Simva User Token Present : " + simvaUserTokenPresent);
+            if(simvaUserTokenPresent != null) {
                 logger.info("AUTHENTICATE token custom provider: " + username);
-                String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("state");
+                String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
                 logger.info("Study: " + study);
                 SimpleEntry<Boolean, String> validate = this.simvaKeycloakCheck.checkTokenInStudy(study, username);
                 if(validate.getKey()) {
@@ -143,12 +150,14 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     StringBuilder studyurl = new StringBuilder();
                     studyurl.append("");
                     if(study != "") {
-                        studyurl.append("&state=").append(study);
+                        studyurl.append("&login_hint=").append(study);
                     }
+                    studyurl.append("&simva_user_token=true");
+                    logger.info(studyurl.toString());
                     // Create a form error response
                     Response challengeResponse = context.form()
                         .setError("Missing or invalid token.")
-                        .setAttribute("token", "true")
+                        .setAttribute("simvaUserToken", "true")
                         .setAttribute("studyurl", studyurl.toString())
                         .createForm("login.ftl");
                     context.challenge(challengeResponse);

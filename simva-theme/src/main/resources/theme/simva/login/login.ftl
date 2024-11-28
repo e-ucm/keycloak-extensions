@@ -8,10 +8,8 @@
     <link href="${url.resourcesPath}/img/favicon.ico" rel="icon"/>
     <script>
         // Parse URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const tokenParam = urlParams.get('token');
-        const tokenValue = `${token!}`;
-        const isTokenLogin = tokenParam != undefined || tokenValue != '';
+        const tokenValue = `${simvaUserToken!}`;
+        const isTokenLogin = tokenValue != '';
         function togglePassword() {
             var x = document.getElementById("password");
             var v = document.getElementById("vi");
@@ -112,7 +110,7 @@
         <div id="token-login">
             <div id="kc-form-wrapper" <#if realm.password && social.providers??>class="${properties.kcFormSocialAccountContentClass!} ${properties.kcFormSocialAccountClass!}"</#if>>
                 <#if realm.password>
-                <form id="kc-form-login" onsubmit="login.disabled = true; return true;" action="${url.loginAction}${studyurl!""}&token" method="post">
+                <form id="kc-form-login" onsubmit="login.disabled = true; return true;" action="${url.loginAction}${studyurl!""}" method="post">
                     <div class="${properties.kcFormGroupClass!}">
                         <input tabindex="1" id="username" class="login-field" name="username" placeholder="${msg("role_read-token")}" type="text" autofocus autocomplete="off" />
                         <input tabindex="2" id="password" class="login-field" name="password" placeholder="${msg("password")}" type="hidden" autocomplete="off" />
