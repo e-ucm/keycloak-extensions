@@ -40,20 +40,12 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
 
     @Override
     public void authenticate(AuthenticationFlowContext context) {
-        //MultivaluedMap<String, String> queryData = context.getHttpRequest();
-        //logMap(queryData);
         MultivaluedMap<String, String> inputData = context.getHttpRequest().getDecodedFormParameters();
         logMap(inputData);
         String username = inputData.getFirst(AuthenticationManager.FORM_USERNAME);
         this.simvaKeycloakCheck = new SimvaKeycloakCheck();
-        if (username.contains("/")) {
-            // Split by "/"
-            String[] parts = username.split("/");
-            // Process the parts
-            String study= study=parts[0]; // Before "/"
-            logger.info("Study found is : " + study);
-            username=parts[1]; // After "/"
-            logger.info("Username found is : " + username);
+        String study = inputData.getFirst("login_hint");
+        if (study != null) {
             SimpleEntry<Boolean, String> validate = this.simvaKeycloakCheck.checkTokenInStudy(study, username);
             if(validate.getKey()) {
                 username = validate.getValue();
