@@ -37,10 +37,11 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
     private final Logger logger = LoggerFactory.getLogger(ValidateTokenUsernameAuthenticator.class);
     public static final String PROVIDER_ID = "direct-grant-validate-token-username";
 
-    private static SimvaKeycloakCheck simvaKeycloakCheck = new SimvaKeycloakCheck();
+    private SimvaKeycloakCheck simvaKeycloakCheck;
 
     @Override
     public void authenticate(AuthenticationFlowContext context) {
+        this.simvaKeycloakCheck = new SimvaKeycloakCheck();
         MultivaluedMap<String, String> inputData = context.getHttpRequest().getDecodedFormParameters();
         logMap(inputData);
         String username = inputData.getFirst(AuthenticationManager.FORM_USERNAME);
@@ -48,7 +49,7 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
         if (study != null) {
             SimpleEntry<Boolean, String> validate;
             try {
-                validate = simvaKeycloakCheck.checkTokenInStudy(study, username);
+                validate = this.simvaKeycloakCheck.checkTokenInStudy(study, username);
             } catch(IOException e) {
                 logger.info(e.toString());
                 validate = new SimpleEntry<>(false, null);
@@ -60,7 +61,7 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
             String password = inputData.getFirst("password");
             Boolean valid;
             try {
-                valid = simvaKeycloakCheck.checkUsernamePassword(username, password);
+                valid = this.simvaKeycloakCheck.checkUsernamePassword(username, password);
             } catch(IOException e) {
                 logger.info(e.toString());
                 valid=false;

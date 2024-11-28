@@ -17,9 +17,7 @@ public class SimvaKeycloakCheck {
 
     public SimvaKeycloakCheck() {
         try {
-            if(!simvaClient.isAuthentificated()) {
-                simvaClient.authenticate();
-            }
+            simvaClient.authenticate();
         } catch(IOException e) {
             logger.info(e.toString());
         }

@@ -30,10 +30,11 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
     private ObjectMapper objectMapper = new ObjectMapper();
 
     private final KeycloakSession session;
-    private static SimvaKeycloakCheck simvaKeycloakCheck= new SimvaKeycloakCheck();
+    private SimvaKeycloakCheck simvaKeycloakCheck;
 
     public CustomAuthenticator(KeycloakSession session) {
         this.session = session;
+        simvaKeycloakCheck= new SimvaKeycloakCheck();
     }
 
     /**
@@ -141,7 +142,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 logger.info("Study: " + study);
                 SimpleEntry<Boolean, String> validate;
                 try {
-                    validate = simvaKeycloakCheck.checkTokenInStudy(study, username);
+                    validate = this.simvaKeycloakCheck.checkTokenInStudy(study, username);
                 } catch(IOException e) {
                     logger.info(e.toString());
                     validate = new SimpleEntry<>(false, null);
@@ -172,7 +173,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 logger.info("AUTHENTICATE username password custom provider: " + username);
                 Boolean valid;
                 try {
-                    valid = simvaKeycloakCheck.checkUsernamePassword(username, password);
+                    valid = this.simvaKeycloakCheck.checkUsernamePassword(username, password);
                 } catch(IOException e) {
                     logger.info(e.toString());
                     valid=false;
