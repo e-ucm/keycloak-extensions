@@ -3,27 +3,28 @@
     displayInfo=social.displayInfo
     displayWide=(realm.password && social.providers??); section
 >
-    <#if section = "header">
-        <link href="https://fonts.googleapis.com/css?family=Muli" rel="stylesheet"/>
-        <link href="${url.resourcesPath}/img/favicon.ico" rel="icon"/>
-        <script>
-            const urlParams = new URLSearchParams(window.location.search);
-            const myParam = urlParams.get('token');
-            const isTokenLogin = myParam != undefined;
-            function togglePassword() {
-                var x = document.getElementById("password");
-                var v = document.getElementById("vi");
-                if (x.type === "password") {
-                    x.type = "text";
-                    v.src = "${url.resourcesPath}/img/eye.png";
-                } else {
-                    x.type = "password";
-                    v.src = "${url.resourcesPath}/img/eye-off.png";
-                }
+<#if section == "header">
+    <link href="https://fonts.googleapis.com/css?family=Muli" rel="stylesheet"/>
+    <link href="${url.resourcesPath}/img/favicon.ico" rel="icon"/>
+    <script>
+        // Parse URL parameters
+        const tokenValue = `${simvaUserToken!}`;
+        const isTokenLogin = tokenValue != '';
+        function togglePassword() {
+            var x = document.getElementById("password");
+            var v = document.getElementById("vi");
+            if (x.type === "password") {
+                x.type = "text";
+                v.src = "${url.resourcesPath}/img/eye.png";
+            } else {
+                x.type = "password";
+                v.src = "${url.resourcesPath}/img/eye-off.png";
             }
-        </script>
-    <#elseif section = "form">
+        }
+    </script>
+<#elseif section == "form">
     <div id="kc-form">
+        <!-- Normal Login Form -->
         <div id="normal-login">
             <script>
                 if(isTokenLogin){
@@ -34,6 +35,7 @@
             <div id="kc-form-wrapper" <#if realm.password && social.providers??>class="${properties.kcFormSocialAccountContentClass!} ${properties.kcFormSocialAccountClass!}"</#if>>
                 <#if realm.password>
                 <form id="kc-form-login" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post">
+                    <!-- Username Input -->
                     <div class="${properties.kcFormGroupClass!}">
                         <#if usernameEditDisabled??>
                             <input tabindex="1" id="username" class="login-field" name="username" value="${(login.username!'')}" placeholder="${msg("username")}" type="text" disabled />
@@ -42,6 +44,7 @@
                         </#if>
                     </div>
 
+                    <!-- Password Input -->
                     <div class="${properties.kcFormGroupClass!}">
                         <div>
                             <label class="visibility" id="v" onclick="togglePassword()"><img id="vi" src="${url.resourcesPath}/img/eye-off.png"></label>
@@ -49,6 +52,7 @@
                         <input tabindex="2" id="password" class="login-field" name="password" placeholder="${msg("password")}" type="password" autocomplete="off" />
                     </div>
 
+                    <!-- Login Options -->
                     <div class="${properties.kcFormGroupClass!} ${properties.kcFormSettingClass!}">
                         <div id="kc-form-options" class="refor">
                             <#if realm.rememberMe && !usernameEditDisabled??>
@@ -70,6 +74,7 @@
 
                         </div>
 
+                        <!-- Login Button -->
                         <div id="kc-form-buttons" class="${properties.kcFormGroupClass!}">
                             <input type="hidden" id="id-hidden-input" name="credentialId" />
                             <input tabindex="4" class="submit ${properties.kcButtonClass!} ${properties.kcButtonPrimaryClass!} ${properties.kcButtonBlockClass!} ${properties.kcButtonLargeClass!}" name="login" id="kc-login" type="submit" value="${msg("doLogIn")}"/>
@@ -78,6 +83,8 @@
                 </form>
                 </#if>
             </div>
+
+            <!-- Social Providers -->
             <#if realm.password && social.providers??>
                 <div id="kc-social-providers" class="${properties.kcFormSocialAccountContentClass!} ${properties.kcFormSocialAccountClass!}">
                     <ul class="${properties.kcFormSocialAccountListClass!} <#if social.providers?size gt 4>${properties.kcFormSocialAccountDoubleListClass!}</#if>">
@@ -87,7 +94,8 @@
                     </ul>
                 </div>
             </#if>
-            
+
+            <!-- Registration Link -->
             <#if realm.password && realm.registrationAllowed && !registrationDisabled??>
                 <div id="kc-info" class="register ${properties.kcSignUpClass!}">
                     <div id="kc-info-wrapper" class="${properties.kcInfoAreaWrapperClass!}">
@@ -98,31 +106,18 @@
                 </div>
             </#if>
         </div>
+        <!-- Token Login Form -->
         <div id="token-login">
             <div id="kc-form-wrapper" <#if realm.password && social.providers??>class="${properties.kcFormSocialAccountContentClass!} ${properties.kcFormSocialAccountClass!}"</#if>>
                 <#if realm.password>
-                <form id="kc-form-login" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post">
+                <form id="kc-form-login" onsubmit="login.disabled = true; return true;" action="${url.loginAction}${studyurl!""}" method="post">
                     <div class="${properties.kcFormGroupClass!}">
-                        <input tabindex="1" id="username" class="login-field" name="username" value="${(login.username!'')}" placeholder="${msg("role_read-token")}" type="text" autofocus autocomplete="off" />
+                        <input tabindex="1" id="username" class="login-field" name="username" placeholder="${msg("role_read-token")}" type="text" autofocus autocomplete="off" />
                         <input tabindex="2" id="password" class="login-field" name="password" placeholder="${msg("password")}" type="hidden" autocomplete="off" />
                     </div>
 
-                    <div class="${properties.kcFormGroupClass!} ${properties.kcFormSettingClass!}">
-                        <div id="kc-form-options" class="refor">
-                            <#if realm.rememberMe && !usernameEditDisabled??>
-                                <div class="checkbox">
-                                    <label>
-                                        <#if login.rememberMe??>
-                                            <input tabindex="3" id="rememberMe" name="rememberMe" type="checkbox" checked> ${msg("rememberMe")}
-                                        <#else>
-                                            <input tabindex="3" id="rememberMe" name="rememberMe" type="checkbox"> ${msg("rememberMe")}
-                                        </#if>
-                                    </label>
-                                </div>
-                            </#if>
-                            </div>
-                        </div>
-                        <div id="kc-form-buttons" class="${properties.kcFormGroupClass!}">
+                    <!-- Submit Button -->
+                    <div id="kc-form-buttons" class="${properties.kcFormGroupClass!}">
                             <input type="hidden" id="id-hidden-input" name="credentialId" />
                             <input tabindex="4" class="submit ${properties.kcButtonClass!} ${properties.kcButtonPrimaryClass!} ${properties.kcButtonBlockClass!} ${properties.kcButtonLargeClass!}" name="login" id="kc-login" type="submit" value="${msg("doLogIn")}"/>
                         </div>
@@ -136,11 +131,12 @@
                     tokenLogin.parentElement.removeChild(tokenLogin);
                 }else{
                     var username = document.getElementById("username");
+                    username.value="";
                     var password = document.getElementById("password");
+                    password.value="";
                     username.oninput = function(){
                         password.value = username.value;
                     };
-
                 }
             </script>
         </div>
