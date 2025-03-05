@@ -7,15 +7,16 @@
 
     <groupId>es.e-ucm.simva.keycloak</groupId>
     <artifactId>simva-theme</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <packaging>jar</packaging>
 
-    <name>simva-theme</name>
-    <description>SIMVA's Keycloak theme</description>
+    <name>Simva Theme</name>
+    <description>SIMVA's Keycloak Theme</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+    
     <build>
         <finalName>${project.groupId}.${project.artifactId}-${project.version}</finalName>
     </build>

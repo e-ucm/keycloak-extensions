@@ -52,7 +52,7 @@ m2_cache="$(dirname "${SCRIPT_DIR}")/data"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -c | --cache )
-        m2_cache="$2"
+        m2_cache=$(realpath "$2")
         shift 2
         ;;
     -k | --keycloak )
