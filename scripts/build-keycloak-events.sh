@@ -2,7 +2,7 @@
 set -eo pipefail
 [[ "${DEBUG}" == "true" ]] && set -x
 
-: ${BUILD_VERSION:=1.1.0}
+: ${BUILD_VERSION:=0.29}
 
 SOURCE=${BASH_SOURCE[0]}
 while [ -L "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
@@ -15,7 +15,7 @@ SCRIPT_DIR=$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )
 function usage ()
 {
     echo 1>&2 "Usage: ${SOURCE} [Options]"
-    echo 1>&2 "Build all keycloak extensions in this repository (${BUILD_VERSION})."
+    echo 1>&2 "Build keycloak event extension (v${BUILD_VERSION})."
     echo 1>&2 "Options:"
     echo 1>&2 "  -h, --help"
     echo 1>&2 "      Shows this help message and exits."
@@ -40,7 +40,7 @@ opts=$(getopt \
 )
 
 eval set -- $opts
-
+m2_cache="$(dirname "${SCRIPT_DIR}")/data"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -b | --build )
@@ -58,21 +58,30 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -d "$SCRIPT_DIR/builds" ]]; then 
-  rm -rf "$SCRIPT_DIR/builds"
+if [[ ! -d "${m2_cache}" ]]; then
+    mkdir -p "${m2_cache}"
 fi
-mkdir "$SCRIPT_DIR/builds"
 
-#!/bin/bash
+if [[ -d "./build-keycloak-events" ]]; then 
+  rm -rf "./build-keycloak-events"
+fi
+mkdir "./build-keycloak-events"
 
-declare -A projects=( ["custom-token-auth-spi"]="24.0.2" ["fullname-attribute-mapper"]="24.0.2" ["policy-attribute-mapper"]="24.0.2" ["simva-theme"]="24.0.2" ["lti-oidc-mapper"]="10.0.2" ["script-policy-attribute-mapper"]="10.0.2" )
+echo $BUILD_VERSION
+# Checkout code in temp dir
+tmp_dir=$(mktemp -d)
+ls -lia $tmp_dir
+git clone --depth 1 --branch v${BUILD_VERSION} "https://github.com/e-ucm/keycloak-events.git" ${tmp_dir};
+chmod -R 777 $tmp_dir
+docker run --rm --name maven-project-builder \
+    -v $tmp_dir:/usr/src/mymaven -w /usr/src/mymaven \
+    -v ${m2_cache}:/usr/src/mymaven/.m2 \
+    -u $(id -u ${USER}):$(id -g ${USER}) \
+    -e MAVEN_CONFIG=/usr/src/mymaven/.m2 \
+    maven:3.8.7-openjdk-18-slim sh -c "apt update && apt install -y git && mvn -Duser.home=/usr/src/mymaven clean package"
+cp ${tmp_dir}/target/keycloak-events-$BUILD_VERSION.jar ./build-keycloak-events/io.phasetwo.keycloak.keycloak-events-$BUILD_VERSION.jar
 
-for project in "${!projects[@]}"; do
-    keycloak_version=${projects[$project]}
-    $SCRIPT_DIR/build.sh --keycloak $keycloak_version "$SCRIPT_DIR/../$project"
-    cp $SCRIPT_DIR/../${project}/target/es.e-ucm.simva.keycloak.$project-$BUILD_VERSION.jar $SCRIPT_DIR/builds/es.e-ucm.simva.keycloak.$project-$BUILD_VERSION.jar
-done
-
-pushd "$SCRIPT_DIR/builds"
-sha256sum ./* > "$SCRIPT_DIR/builds/SHA256SUMS"
+pushd "$SCRIPT_DIR/build-keycloak-events/"
+sha256sum ./* > "$SCRIPT_DIR/build-keycloak-events/SHA256SUMS"
 popd
+rm -rf $tmp_dir
