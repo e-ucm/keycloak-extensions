@@ -62,10 +62,10 @@ if [[ ! -d "${m2_cache}" ]]; then
     mkdir -p "${m2_cache}"
 fi
 
-if [[ -d "./build-keycloak-events" ]]; then 
-  rm -rf "./build-keycloak-events"
+if [[ -d "./build-keycloak-events-$BUILD_VERSION" ]]; then 
+  rm -rf "./build-keycloak-events-$BUILD_VERSION"
 fi
-mkdir "./build-keycloak-events"
+mkdir "./build-keycloak-events-$BUILD_VERSION"
 
 echo $BUILD_VERSION
 # Checkout code in temp dir
@@ -78,10 +78,10 @@ docker run --rm --name maven-project-builder \
     -v ${m2_cache}:/usr/src/mymaven/.m2 \
     -u $(id -u ${USER}):$(id -g ${USER}) \
     -e MAVEN_CONFIG=/usr/src/mymaven/.m2 \
-    maven:3.8.7-openjdk-18-slim sh -c "apt update && apt install -y git && mvn -Duser.home=/usr/src/mymaven clean package"
-cp ${tmp_dir}/target/keycloak-events-$BUILD_VERSION.jar ./build-keycloak-events/io.phasetwo.keycloak.keycloak-events-$BUILD_VERSION.jar
+    maven:3.9.9-amazoncorretto-23-debian sh -c "apt update && apt install -y git && mvn -Duser.home=/usr/src/mymaven clean package"
+cp ${tmp_dir}/target/keycloak-events-$BUILD_VERSION.jar ./build-keycloak-events-$BUILD_VERSION/io.phasetwo.keycloak.keycloak-events-$BUILD_VERSION.jar
 
-pushd "$SCRIPT_DIR/build-keycloak-events/"
-sha256sum ./* > "$SCRIPT_DIR/build-keycloak-events/SHA256SUMS"
+pushd "$SCRIPT_DIR/build-keycloak-events-$BUILD_VERSION/"
+sha256sum ./* > "$SCRIPT_DIR/build-keycloak-events-$BUILD_VERSION/SHA256SUMS"
 popd
 rm -rf $tmp_dir

@@ -58,10 +58,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -d "$SCRIPT_DIR/builds" ]]; then 
-  rm -rf "$SCRIPT_DIR/builds"
+if [[ -d "$SCRIPT_DIR/builds-$BUILD_VERSION" ]]; then 
+  rm -rf "$SCRIPT_DIR/builds-$BUILD_VERSION"
 fi
-mkdir "$SCRIPT_DIR/builds"
+mkdir "$SCRIPT_DIR/builds-$BUILD_VERSION"
 
 #!/bin/bash
 
@@ -70,9 +70,9 @@ declare -A projects=( ["custom-token-auth-spi"]="24.0.2" ["fullname-attribute-ma
 for project in "${!projects[@]}"; do
     keycloak_version=${projects[$project]}
     $SCRIPT_DIR/build.sh --keycloak $keycloak_version "$SCRIPT_DIR/../$project"
-    cp $SCRIPT_DIR/../${project}/target/es.e-ucm.simva.keycloak.$project-$BUILD_VERSION.jar $SCRIPT_DIR/builds/es.e-ucm.simva.keycloak.$project-$BUILD_VERSION.jar
+    cp $SCRIPT_DIR/../${project}/target/es.e-ucm.simva.keycloak.$project-$BUILD_VERSION.jar $SCRIPT_DIR/builds-$BUILD_VERSION/es.e-ucm.simva.keycloak.$project-$BUILD_VERSION.jar
 done
 
-pushd "$SCRIPT_DIR/builds"
-sha256sum ./* > "$SCRIPT_DIR/builds/SHA256SUMS"
+pushd "$SCRIPT_DIR/builds-$BUILD_VERSION"
+sha256sum ./* > "$SCRIPT_DIR/builds-$BUILD_VERSION/SHA256SUMS"
 popd
