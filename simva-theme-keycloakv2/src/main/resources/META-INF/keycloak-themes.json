@@ -1,0 +1,6 @@
+{
+    "themes": [{
+        "name" : "simva",
+        "types": [ "account", "admin", "email", "login", "welcome" ]
+    }]
+}
