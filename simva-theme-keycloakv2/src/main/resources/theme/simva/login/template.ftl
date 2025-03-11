@@ -112,8 +112,10 @@
 <div class="${properties.kcLogin!}">
   <div class="${properties.kcLoginContainer!}">
     <header id="kc-header" class="pf-v5-c-login__header">
-      <div id="kc-header-wrapper"
-              class="pf-v5-c-brand">${kcSanitize(msg("loginTitleHtml",(realm.displayNameHtml!'')))?no_esc}</div>
+      <div id="kc-header-wrapper" class="pf-v5-c-brand">
+        <!-- ${kcSanitize(msg("loginTitleHtml",(realm.displayNameHtml!'')))?no_esc} -->
+        <img class="logo" src="${url.resourcesPath}/img/simva-logo.png" alt="Simva">
+      </div>
     </header>
     <main class="${properties.kcLoginMain!}">
       <div class="${properties.kcLoginMainHeader!}">
@@ -188,7 +190,8 @@
                 </div>
             </#if>
         </#if>
-
+      </header>
+      <div id="kc-content" class="box">
         <#-- App-initiated actions should not see warning messages about the need to complete the action -->
         <#-- during login.                                                                               -->
         <#if displayMessage && message?has_content && (message.type != 'warning' || !isAppInitiatedAction??)>

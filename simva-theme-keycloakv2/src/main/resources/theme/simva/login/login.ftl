@@ -1,135 +1,106 @@
 <#import "template.ftl" as layout>
-<@layout.registrationLayout 
-    displayMessage=!messagesPerField.existsError('username','password') 
-    displayInfo=realm.password && realm.registrationAllowed && !registrationDisabled??; section>
-
-<#if section == "header">
-    <link href="https://fonts.googleapis.com/css?family=Muli" rel="stylesheet"/>
-    <link href="${url.resourcesPath}/img/favicon.ico" rel="icon"/>
-    <script>
-        // Parse URL parameters
-        const tokenValue = `${simvaUserToken!}`;
-        const isTokenLogin = tokenValue != '';
-        function togglePassword() {
-            var x = document.getElementById("password");
-            var v = document.getElementById("vi");
-            if (x.type === "password") {
-                x.type = "text";
-                v.src = "${url.resourcesPath}/img/eye.png";
-            } else {
-                x.type = "password";
-                v.src = "${url.resourcesPath}/img/eye-off.png";
-            }
-        }
-    </script>
-<#elseif section == "form">
-    <div id="kc-form">
-        <!-- Normal Login Form -->
-        <div id="normal-login">
-            <script>
-                if(isTokenLogin){
-                    var normalLogin = document.getElementById("normal-login");
-                    normalLogin.parentElement.removeChild(normalLogin);
-                }
-            </script>
-            <div id="kc-form-wrapper">
-                <#if realm.password>
-                <form id="kc-form-login" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post">
-                    <!-- Username Input -->
-                    <div class="${properties.kcFormGroupClass!}">
-                        <#if usernameEditDisabled??>
-                            <input tabindex="1" id="username" class="login-field" name="username" value="${(login.username!'')}" placeholder="${msg("username")}" type="text" disabled />
-                        <#else>
-                            <input tabindex="1" id="username" class="login-field" name="username" value="${(login.username!'')}" placeholder="${msg("username")}" type="text" autofocus autocomplete="off" />
-                        </#if>
-                    </div>
-
-                    <!-- Password Input -->
-                    <div class="${properties.kcFormGroupClass!}">
-                        <div>
-                            <label class="visibility" id="v" onclick="togglePassword()"><img id="vi" src="${url.resourcesPath}/img/eye-off.png"></label>
-                        </div>
-                        <input tabindex="2" id="password" class="login-field" name="password" placeholder="${msg("password")}" type="password" autocomplete="off" />
-                    </div>
-
-                    <!-- Login Options -->
-                    <div class="${properties.kcFormGroupClass!} ${properties.kcFormSettingClass!}">
-                        <div id="kc-form-options" class="refor">
-                            <#if realm.rememberMe && !usernameEditDisabled??>
-                                <div class="checkbox">
-                                    <label>
-                                        <#if login.rememberMe??>
-                                            <input tabindex="3" id="rememberMe" name="rememberMe" type="checkbox" checked> ${msg("rememberMe")}
-                                        <#else>
-                                            <input tabindex="3" id="rememberMe" name="rememberMe" type="checkbox"> ${msg("rememberMe")}
-                                        </#if>
-                                    </label>
-                                </div>
+<#import "field.ftl" as field>
+<#import "buttons.ftl" as buttons>
+<#import "social-providers.ftl" as identityProviders>
+<@layout.registrationLayout displayMessage=!messagesPerField.existsError('username','password') displayInfo=realm.password && realm.registrationAllowed && !registrationDisabled??; section>
+<!-- login.ftl -->
+    <#if section = "header">
+        ${msg("loginAccountTitle")}
+        <script>
+            // Parse URL parameters
+            const tokenValue = `${simvaUserToken!}`;
+            const isTokenLogin = tokenValue != '';
+        </script>
+    <#elseif section = "form">
+        <div id="kc-form">
+            <!-- Normal FORM -->
+            <div id="normal-login">
+                <script>
+                    if(isTokenLogin){
+                        var normalLogin = document.getElementById("normal-login");
+                        normalLogin.parentElement.removeChild(normalLogin);
+                    }
+                </script>
+                <div id="kc-form-wrapper">
+                    <#if realm.password>
+                        <form id="kc-form-login" class="${properties.kcFormClass!}" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post" novalidate="novalidate">
+                            <#if !usernameHidden??>
+                                <#assign label>
+                                    <#if !realm.loginWithEmailAllowed>${msg("username")}<#elseif !realm.registrationEmailAsUsername>${msg("usernameOrEmail")}<#else>${msg("email")}</#if>
+                                </#assign>
+                                <@field.input name="username" label=label error=kcSanitize(messagesPerField.getFirstError('username','password'))?no_esc autofocus=true autocomplete="username" value=login.username!'' />
+                                <@field.password name="password" label=msg("password") error="" forgotPassword=realm.resetPasswordAllowed autofocus=usernameHidden?? autocomplete="current-password" />
+                            <#else>
+                                <@field.password name="password" label=msg("password") forgotPassword=realm.resetPasswordAllowed autofocus=usernameHidden?? autocomplete="current-password" />
                             </#if>
-                            <div class="${properties.kcFormOptionsWrapperClass!} forgot">
-                                <#if realm.resetPasswordAllowed>
-                                    <span><a tabindex="5" href="${url.loginResetCredentialsUrl}">${msg("doForgotPassword")}</a></span>
+
+                            <div class="${properties.kcFormGroupClass!}">
+                                <#if realm.rememberMe && !usernameHidden??>
+                                    <@field.checkbox name="rememberMe" label=msg("rememberMe") value=login.rememberMe?? />
                                 </#if>
                             </div>
 
-                        </div>
-
-                        <!-- Login Button -->
-                        <div id="kc-form-buttons" class="${properties.kcFormGroupClass!}">
-                            <input type="hidden" id="id-hidden-input" name="credentialId" />
-                            <input tabindex="4" class="submit ${properties.kcButtonClass!} ${properties.kcButtonPrimaryClass!} ${properties.kcButtonBlockClass!} ${properties.kcButtonLargeClass!}" name="login" id="kc-login" type="submit" value="${msg("doLogIn")}"/>
-                        </div>
-                    </div>
-                </form>
-                </#if>
-            </div>
-
-            <!-- Registration Link -->
-            <#if realm.password && realm.registrationAllowed && !registrationDisabled??>
-                <div id="kc-info" class="register ${properties.kcSignUpClass!}">
-                    <div id="kc-info-wrapper" class="${properties.kcInfoAreaWrapperClass!}">
-                        <div id="kc-registration">
-                            <span>${msg("noAccount")} <a tabindex="6" href="${url.registrationUrl}">${msg("doRegister")}</a></span>
-                        </div>
-                    </div>
+                            <input type="hidden" id="id-hidden-input" name="credentialId" <#if auth.selectedCredential?has_content>value="${auth.selectedCredential}"</#if>/>
+                            <@buttons.loginButton />
+                        </form>
+                    </#if>
                 </div>
-            </#if>
-        </div>
-        <!-- Token Login Form -->
-        <div id="token-login">
-            <div id="kc-form-wrapper">
-                <#if realm.password>
-                <form id="kc-form-login" onsubmit="login.disabled = true; return true;" action="${url.loginAction}${studyurl!""}" method="post">
-                    <div class="${properties.kcFormGroupClass!}">
-                        <input tabindex="1" id="username" class="login-field" name="username" placeholder="${msg("role_read-token")}" type="text" autofocus autocomplete="off" />
-                        <input tabindex="2" id="password" class="login-field" name="password" placeholder="${msg("password")}" type="hidden" autocomplete="off" />
-                    </div>
-
-                    <!-- Submit Button -->
-                    <div id="kc-form-buttons" class="${properties.kcFormGroupClass!}">
-                            <input type="hidden" id="id-hidden-input" name="credentialId" />
-                            <input tabindex="4" class="submit ${properties.kcButtonClass!} ${properties.kcButtonPrimaryClass!} ${properties.kcButtonBlockClass!} ${properties.kcButtonLargeClass!}" name="login" id="kc-login" type="submit" value="${msg("doLogIn")}"/>
-                        </div>
-                    </div>
-                </form>
-                </#if>
             </div>
+            <!-- Token FORM -->
+            <div id="token-login">
+                <div id="kc-form-wrapper">
+                    <#if realm.password>
+                        <form id="kc-form-login" class="${properties.kcFormClass!}" onsubmit="login.disabled = true; return true;" action="${url.loginAction}${studyurl!""}" method="post" novalidate="novalidate">
+                            <@field.input name="username" label=msg("role_read-token") error=kcSanitize(messagesPerField.getFirstError('username','password'))?no_esc autofocus=true autocomplete="off" />
+                            <input id="password" class="login-field" name="password" type="hidden" autocomplete="off" />
+
+                            <input type="hidden" id="id-hidden-input" name="credentialId" <#if auth.selectedCredential?has_content>value="${auth.selectedCredential}"</#if>/>
+                            <@buttons.loginButton />
+                        </form>
+                    </#if>
+                </div>
+                <script>
+                    if(!isTokenLogin){
+                        var tokenLogin = document.getElementById("token-login");
+                        tokenLogin.parentElement.removeChild(tokenLogin);
+                    }else{
+                        var username = document.getElementById("username");
+                        username.value="";
+                        var password = document.getElementById("password");
+                        password.value="";
+                        username.oninput = function(){
+                            password.value = username.value;
+                        };
+                    }
+                </script>
+            </div>
+        </div>
+    <#elseif section = "info" >
+        <#if realm.password && realm.registrationAllowed && !registrationDisabled??>
+            <div id="kc-registration-container" class="${properties.kcLoginFooterBand!}">
+                <div id="kc-registration" class="${properties.kcLoginFooterBandItem!}">
+                    <span>${msg("noAccount")} <a href="${url.registrationUrl}">${msg("doRegister")}</a></span>
+                </div>
+                <script>
+                    if(isTokenLogin){
+                        var register = document.getElementById("kc-registration-container");
+                        register.parentElement.removeChild(register);
+                    }
+                </script>
+            </div>
+        </#if>
+    <#elseif section = "socialProviders" >
+        <div id="socialProviders">
+            <#if realm.password && social.providers?? && social.providers?has_content>
+                <@identityProviders.show social=social/>
+            </#if>
             <script>
-                if(!isTokenLogin){
-                    var tokenLogin = document.getElementById("token-login");
-                    tokenLogin.parentElement.removeChild(tokenLogin);
-                }else{
-                    var username = document.getElementById("username");
-                    username.value="";
-                    var password = document.getElementById("password");
-                    password.value="";
-                    username.oninput = function(){
-                        password.value = username.value;
-                    };
+                if(isTokenLogin){
+                    var sp = document.getElementById("socialProviders");
+                    sp.parentElement.removeChild(sp);
                 }
             </script>
         </div>
-    </div>
     </#if>
 
 </@layout.registrationLayout>
