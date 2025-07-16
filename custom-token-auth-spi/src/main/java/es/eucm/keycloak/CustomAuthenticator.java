@@ -1,6 +1,7 @@
 package es.eucm.keycloak;
 
 import es.eucm.utils.SimvaKeycloakCheck;
+import es.eucm.utils.Messages;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.keycloak.authentication.AuthenticationFlowContext;
@@ -176,7 +177,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     logger.info(stringurl.toString());
                     // Create a form error response
                     Response challengeResponse = context.form()
-                        .setError("Missing or invalid token.")
+                        .setError(Messages.INVALID_TOKEN)
                         .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
                         .setAttribute("simvaUserToken", "true")
                         .setAttribute("stringurl", stringurl.toString())
@@ -202,7 +203,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     Response challengeResponse = context.form()
                         .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
                         .setAttribute("stringurl", stringurl.toString())
-                        .setError("Missing or invalid username or password.")
+                        .setError(Messages.INVALID_USERNAME_OR_PASSWORD)
                         .createForm("login.ftl");
                     context.challenge(challengeResponse);
                 }
