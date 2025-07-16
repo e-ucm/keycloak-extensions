@@ -142,6 +142,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 context.cancelLogin();
                 return;
             }
+            String errorMsg;
             String username = formData.getFirst("username");
             String password = formData.getFirst("password");
             String simvaUserTokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("simva_user_token");
@@ -152,7 +153,12 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
             if(hideLocaleDropdown != null) {
                 stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
             }
-            if(simvaUserTokenPresent != null) {
+            if(simvaUserTokenPresent != null && simvaUserTokenPresent.equals("true")) {
+                if(username.isEmpty()) {
+                    errorMsg=Messages.EMPTY_VALUE;
+                } else {
+                    errorMsg=Messages.INVALID_VALUE;
+                }
                 logger.info("AUTHENTICATE token custom provider: " + username);
                 String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
                 logger.info("Study: " + study);
@@ -177,7 +183,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     logger.info(stringurl.toString());
                     // Create a form error response
                     Response challengeResponse = context.form()
-                        .setError(Messages.INVALID_TOKEN)
+                        .setError(errorMsg)
                         .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
                         .setAttribute("simvaUserToken", "true")
                         .setAttribute("stringurl", stringurl.toString())
@@ -185,6 +191,13 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     context.challenge(challengeResponse);
                 }
             } else {
+                if(username.isEmpty()) {
+                    errorMsg=Messages.MISSING_USERNAME;
+                } else if(password.isEmpty()) {
+                    errorMsg=Messages.MISSING_PASSWORD;
+                } else {
+                    errorMsg=Messages.INVALID_USERNAME_OR_PASSWORD;
+                }
                 logger.info("AUTHENTICATE username password custom provider: " + username);
                 Boolean valid;
                 try {
@@ -203,7 +216,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     Response challengeResponse = context.form()
                         .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
                         .setAttribute("stringurl", stringurl.toString())
-                        .setError(Messages.INVALID_USERNAME_OR_PASSWORD)
+                        .setError(errorMsg)
                         .createForm("login.ftl");
                     context.challenge(challengeResponse);
                 }
