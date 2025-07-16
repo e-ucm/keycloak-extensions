@@ -106,11 +106,6 @@
       // Workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=1404468
       const isFirefox = true;
     </script>
-    <script>
-        // Parse URL parameters
-        const dropdownLocale = `${hideLocaleDropdown!}`;
-        const isLocaleDropdownHidden = dropdownLocale == 'true';
-    </script>
 </head>
 
 <body id="keycloak-bg" class="${properties.kcBodyClass!}">
@@ -125,14 +120,14 @@
     <main class="${properties.kcLoginMain!}">
       <div class="${properties.kcLoginMainHeader!}">
         <h1 class="${properties.kcLoginMainTitle!}" id="kc-page-title"><#nested "header"></h1>
-        <#if realm.internationalizationEnabled  && locale.supported?size gt 1>
+        <#if realm.internationalizationEnabled  && !("${hideLocaleDropdown!}" == "true") && locale.supported?size gt 1>
         <div class="${properties.kcLoginMainHeaderUtilities!}">
           <div class="${properties.kcInputClass!}">
             <select
               aria-label="${msg("languages")}"
               id="login-select-toggle"
               onchange="if(this.value) {
-                  window.location.href=this.value + `${studyurl!}`
+                  window.location.href=this.value + `${stringurl!}`
                 }"
             >
               <#list locale.supported?sort_by("label") as l>

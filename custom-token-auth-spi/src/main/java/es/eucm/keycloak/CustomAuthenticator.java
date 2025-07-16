@@ -70,27 +70,31 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 }
             }
         }
-
+        StringBuilder stringurl = new StringBuilder();
+        stringurl.append("");
+        if(hideLocaleDropdown != null) {
+            stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
+        }
         if(simvaUserTokenPresent == null) {
             logger.info("AUTHENTICATE username/password custom provider");
+            logger.info(stringurl.toString());
             Response challengeResponse = challenge(context.form()
                .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
+               .setAttribute("stringurl", stringurl.toString())
              , formData
            );
             context.challenge(challengeResponse);
         } else {
-            StringBuilder studyurl = new StringBuilder();
-            studyurl.append("");
             String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
             if(study != "") {
-                studyurl.append("&login_hint=").append(study);
+                stringurl.append("&login_hint=").append(study);
             }
-            studyurl.append("&simva_user_token=true");
-            logger.info(studyurl.toString());
+            stringurl.append("&simva_user_token=true");
+            logger.info(stringurl.toString());
             logger.info("AUTHENTICATE token custom provider");
             Response challengeResponse = challenge(context.form()
                 .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
-                .setAttribute("studyurl", studyurl.toString())
+                .setAttribute("stringurl", stringurl.toString())
                 .setAttribute("simvaUserToken", "true")
                 , formData
             );
@@ -141,6 +145,12 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
             String password = formData.getFirst("password");
             String simvaUserTokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("simva_user_token");
             logger.info("Simva User Token Present : " + simvaUserTokenPresent);
+            String hideLocaleDropdown = context.getHttpRequest().getUri().getQueryParameters().getFirst("hideLocaleDropdown");
+            StringBuilder stringurl = new StringBuilder();
+            stringurl.append("");
+            if(hideLocaleDropdown != null) {
+                stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
+            }
             if(simvaUserTokenPresent != null) {
                 logger.info("AUTHENTICATE token custom provider: " + username);
                 String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
@@ -159,18 +169,17 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     context.success(); // Proceed if token is valid
                     return;
                 } else {
-                    StringBuilder studyurl = new StringBuilder();
-                    studyurl.append("");
                     if(study != "") {
-                        studyurl.append("&login_hint=").append(study);
+                        stringurl.append("&login_hint=").append(study);
                     }
-                    studyurl.append("&simva_user_token=true");
-                    logger.info(studyurl.toString());
+                    stringurl.append("&simva_user_token=true");
+                    logger.info(stringurl.toString());
                     // Create a form error response
                     Response challengeResponse = context.form()
                         .setError("Missing or invalid token.")
+                        .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
                         .setAttribute("simvaUserToken", "true")
-                        .setAttribute("studyurl", studyurl.toString())
+                        .setAttribute("stringurl", stringurl.toString())
                         .createForm("login.ftl");
                     context.challenge(challengeResponse);
                 }
@@ -191,6 +200,8 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 } else {
                     // Create a form error response
                     Response challengeResponse = context.form()
+                        .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
+                        .setAttribute("stringurl", stringurl.toString())
                         .setError("Missing or invalid username or password.")
                         .createForm("login.ftl");
                     context.challenge(challengeResponse);

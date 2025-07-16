@@ -23,7 +23,7 @@
                 </script>
                 <div id="kc-form-wrapper">
                     <#if realm.password>
-                        <form id="kc-form-login" class="${properties.kcFormClass!}" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post" novalidate="novalidate">
+                        <form id="kc-form-login" class="${properties.kcFormClass!}" onsubmit="login.disabled = true; return true;" action="${url.loginAction}${stringurl!""}" method="post" novalidate="novalidate">
                             <#if !usernameHidden??>
                                 <#assign label>
                                     <#if !realm.loginWithEmailAllowed>${msg("username")}<#elseif !realm.registrationEmailAsUsername>${msg("usernameOrEmail")}<#else>${msg("email")}</#if>
@@ -50,7 +50,7 @@
             <div id="token-login">
                 <div id="kc-form-wrapper">
                     <#if realm.password>
-                        <form id="kc-form-login" class="${properties.kcFormClass!}" onsubmit="login.disabled = true; return true;" action="${url.loginAction}${studyurl!""}" method="post" novalidate="novalidate">
+                        <form id="kc-form-login" class="${properties.kcFormClass!}" onsubmit="login.disabled = true; return true;" action="${url.loginAction}${stringurl!""}" method="post" novalidate="novalidate">
                             <@field.input name="username" label=msg("role_read-token") error=kcSanitize(messagesPerField.getFirstError('username','password'))?no_esc autofocus=true autocomplete="off" />
                             <input id="password" class="login-field" name="password" type="hidden" autocomplete="off" />
 
