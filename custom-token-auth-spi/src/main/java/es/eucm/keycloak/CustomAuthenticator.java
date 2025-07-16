@@ -48,7 +48,8 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         logMap(context.getHttpRequest().getUri().getQueryParameters());
         logMap(context.getHttpRequest().getDecodedFormParameters());
         String simvaUserTokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("simva_user_token");
-        
+        String hideLocaleDropdown = context.getHttpRequest().getUri().getQueryParameters().getFirst("hideLocaleDropdown");
+
         MultivaluedMap<String, String> formData = new MultivaluedHashMap<>();
         String loginHint = context.getAuthenticationSession().getClientNote(OIDCLoginProtocol.LOGIN_HINT_PARAM);
 
@@ -72,7 +73,10 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
 
         if(simvaUserTokenPresent == null) {
             logger.info("AUTHENTICATE username/password custom provider");
-            Response challengeResponse = challenge(context.form(), formData);
+            Response challengeResponse = challenge(context.form()
+               .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
+             , formData
+           );
             context.challenge(challengeResponse);
         } else {
             StringBuilder studyurl = new StringBuilder();
@@ -85,6 +89,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
             logger.info(studyurl.toString());
             logger.info("AUTHENTICATE token custom provider");
             Response challengeResponse = challenge(context.form()
+                .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
                 .setAttribute("studyurl", studyurl.toString())
                 .setAttribute("simvaUserToken", "true")
                 , formData
