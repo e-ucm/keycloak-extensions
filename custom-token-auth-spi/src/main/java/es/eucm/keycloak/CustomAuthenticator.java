@@ -76,16 +76,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         if(hideLocaleDropdown != null) {
             stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
         }
-        if(simvaUserTokenPresent == null) {
-            logger.info("AUTHENTICATE username/password custom provider");
-            logger.info(stringurl.toString());
-            Response challengeResponse = challenge(context.form()
-               .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
-               .setAttribute("stringurl", stringurl.toString())
-             , formData
-           );
-            context.challenge(challengeResponse);
-        } else {
+        if(simvaUserTokenPresent != null && simvaUserTokenPresent == "true") {
             String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
             if(study != "") {
                 stringurl.append("&login_hint=").append(study);
@@ -99,6 +90,15 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 .setAttribute("simvaUserToken", "true")
                 , formData
             );
+            context.challenge(challengeResponse);
+        } else {
+            logger.info("AUTHENTICATE username/password custom provider");
+            logger.info(stringurl.toString());
+            Response challengeResponse = challenge(context.form()
+               .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
+               .setAttribute("stringurl", stringurl.toString())
+             , formData
+           );
             context.challenge(challengeResponse);
         }
     }
@@ -153,7 +153,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
             if(hideLocaleDropdown != null) {
                 stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
             }
-            if(simvaUserTokenPresent != null && simvaUserTokenPresent.equals("true")) {
+            if(simvaUserTokenPresent != null && simvaUserTokenPresent == "true") {
                 if(username.isEmpty()) {
                     errorMsg=Messages.EMPTY_VALUE;
                 } else {
