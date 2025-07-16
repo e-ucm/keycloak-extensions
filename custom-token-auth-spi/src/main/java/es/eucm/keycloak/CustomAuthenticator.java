@@ -76,7 +76,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         if(hideLocaleDropdown != null) {
             stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
         }
-        if(simvaUserTokenPresent != null && simvaUserTokenPresent == "true") {
+        if(simvaUserTokenPresent != null && simvaUserTokenPresent.equals("true")) {
             String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
             if(study != "") {
                 stringurl.append("&login_hint=").append(study);
@@ -153,7 +153,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
             if(hideLocaleDropdown != null) {
                 stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
             }
-            if(simvaUserTokenPresent != null && simvaUserTokenPresent == "true") {
+            if(simvaUserTokenPresent != null && simvaUserTokenPresent.equals("true")) {
                 if(username.isEmpty()) {
                     errorMsg=Messages.EMPTY_VALUE;
                 } else {
