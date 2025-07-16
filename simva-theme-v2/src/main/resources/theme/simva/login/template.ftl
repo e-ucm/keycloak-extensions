@@ -25,6 +25,8 @@
 <!DOCTYPE html>
 <html class="${properties.kcHtmlClass!}" lang="${lang}"<#if realm.internationalizationEnabled> dir="${(locale.rtl)?then('rtl','ltr')}"</#if>>
 
+<#assign hideLocaleDropdown = attributes.hideLocaleDropdown?? && attributes.hideLocaleDropdown == "true">
+
 <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
@@ -120,13 +122,13 @@
     <main class="${properties.kcLoginMain!}">
       <div class="${properties.kcLoginMainHeader!}">
         <h1 class="${properties.kcLoginMainTitle!}" id="kc-page-title"><#nested "header"></h1>
-        <#if realm.internationalizationEnabled  && locale.supported?size gt 1>
+        <#if realm.internationalizationEnabled  && locale.supported?size gt 1  && !hideLocaleDropdown>
         <div class="${properties.kcLoginMainHeaderUtilities!}">
           <div class="${properties.kcInputClass!}">
             <select
               aria-label="${msg("languages")}"
               id="login-select-toggle"
-              onchange="if (this.value) window.location.href=this.value"
+              onchange="if (this.value) window.location.href=\"${this.value}${studyurl!""}\""
             >
               <#list locale.supported?sort_by("label") as l>
                 <option
