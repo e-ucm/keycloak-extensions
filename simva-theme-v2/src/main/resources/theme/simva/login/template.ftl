@@ -120,7 +120,8 @@
     <main class="${properties.kcLoginMain!}">
       <div class="${properties.kcLoginMainHeader!}">
         <h1 class="${properties.kcLoginMainTitle!}" id="kc-page-title"><#nested "header"></h1>
-        <#if realm.internationalizationEnabled  && !("${hideLocaleDropdown!}" == "true") && locale.supported?size gt 1>
+        <#assign hideDropdown = (hideLocaleDropdown! "false") == "true">
+        <#if realm.internationalizationEnabled && !hideDropdown && locale.supported?size gt 1>
         <div class="${properties.kcLoginMainHeaderUtilities!}">
           <div class="${properties.kcInputClass!}">
             <select
