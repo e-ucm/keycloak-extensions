@@ -19,6 +19,10 @@ public class KeycloakOAuth2Client {
     private String accessToken;
     private String refreshToken;
 
+    public String getAccessToken() {
+        return this.accessToken;
+    }
+    
     public KeycloakOAuth2Client() {
         this.objectMapper = new ObjectMapper();
     }

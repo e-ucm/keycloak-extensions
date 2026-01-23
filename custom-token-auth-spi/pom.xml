@@ -6,7 +6,7 @@
 
 	<groupId>es.e-ucm.simva.keycloak</groupId>
 	<artifactId>custom-token-auth-spi</artifactId>
-	<version>1.2.0</version>
+	<version>1.3.0</version>
 	<packaging>jar</packaging>
 
 	<name>Custom Token Auth SPI</name>

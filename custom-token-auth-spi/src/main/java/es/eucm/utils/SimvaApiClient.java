@@ -20,6 +20,7 @@ import okhttp3.*;
 
 public class SimvaApiClient {
     private static final Logger logger = Logger.getLogger(SimvaApiClient.class);
+    private static KeycloakOAuth2Client keycloakClient = new KeycloakOAuth2Client();
 
     private static SimvaApiConfig apiConfig = new SimvaApiConfig();
     private String bearerToken;
@@ -38,20 +39,15 @@ public class SimvaApiClient {
     }
 
     public void authenticate() throws IOException {
-        // Create an ObjectMapper instance
-        ObjectMapper objectMapper = new ObjectMapper();
-        // Create a JSON object using ObjectNode
-        ObjectNode payload = objectMapper.createObjectNode();
-        payload.put("username", apiConfig.getAdminUsername());
-        payload.put("password", apiConfig.getAdminPassword());
-        // Convert the JSON object to a string
-        String jsonPayload = objectMapper.writeValueAsString(payload);
-        // Define the API URL
-        String apiUrl = "/users/login";
-        // Read the body of the response into a hashmap
-        Map<String,Object> responseMap = this.sendPostRequest(apiUrl, jsonPayload);
-        // Read the value of the "access_token" key from the hashmap 
-        this.bearerToken = "Bearer " + (String)responseMap.get("token");
+        // Validate admin credentials to get a token
+        boolean isValid = keycloakClient.validateUserCredentials(apiConfig.getAdminUsername(), apiConfig.getAdminPassword());
+        if(!isValid) {
+            throw new IOException("Invalid admin credentials for Simva API");
+        } else {
+            logger.info("Admin credentials validated");
+        }
+        // Store the bearer token for future requests
+        this.bearerToken = "Bearer " + keycloakClient.getAccessToken();
         logger.info("Token: " + this.bearerToken);
     }
 
