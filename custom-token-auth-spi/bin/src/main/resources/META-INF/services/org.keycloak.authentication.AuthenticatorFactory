@@ -1,0 +1,2 @@
+es.eucm.keycloak.CustomAuthenticatorFactory
+es.eucm.keycloak.ValidateTokenUsernameAuthenticator

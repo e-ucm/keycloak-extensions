@@ -45,11 +45,11 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
         MultivaluedMap<String, String> inputData = context.getHttpRequest().getDecodedFormParameters();
         logMap(inputData);
         String username = inputData.getFirst(AuthenticationManager.FORM_USERNAME);
-        String study = inputData.getFirst("login_hint");
-        if (study != null) {
+        String login_hint = inputData.getFirst("login_hint");
+        if (login_hint != null) {
             SimpleEntry<Boolean, String> validate;
             try {
-                validate = this.simvaKeycloakCheck.checkTokenInStudy(study, username);
+                validate = this.simvaKeycloakCheck.checkTokenWithLoginHint(username, login_hint);
             } catch(IOException e) {
                 logger.info(e.toString());
                 validate = new SimpleEntry<>(false, null);

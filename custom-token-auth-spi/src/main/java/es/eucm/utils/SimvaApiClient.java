@@ -23,8 +23,11 @@ public class SimvaApiClient {
     private static KeycloakOAuth2Client keycloakClient = new KeycloakOAuth2Client();
 
     private static SimvaApiConfig apiConfig = new SimvaApiConfig();
+    private String username;
+    private String password;
     private String bearerToken;
     private OkHttpClient client;
+
     public SimvaApiClient() {
         try {
             // Create a new HTTP client
@@ -38,17 +41,33 @@ public class SimvaApiClient {
         return this.bearerToken != null;
     }
 
-    public void authenticate() throws IOException {
+    public boolean authenticate() throws IOException{
+        return authenticate(apiConfig.getAdminUsername(), apiConfig.getAdminPassword());
+    }
+
+    public boolean authenticate(String username, String password) throws IOException {
         // Validate admin credentials to get a token
-        boolean isValid = keycloakClient.validateUserCredentials(apiConfig.getAdminUsername(), apiConfig.getAdminPassword());
+        boolean isValid = keycloakClient.validateUserCredentials(username, password);
         if(!isValid) {
-            throw new IOException("Invalid admin credentials for Simva API");
+            logger.info("Invalid credentials for Simva API");
+            return false;
         } else {
-            logger.info("Admin credentials validated");
+            logger.info("Credentials validated");
+            this.username = username;
+            this.password = password;
+            // Store the bearer token for future requests
+            this.bearerToken = "Bearer " + keycloakClient.getAccessToken();
+            logger.info("Token: " + this.bearerToken);
+            return true;
         }
-        // Store the bearer token for future requests
-        this.bearerToken = "Bearer " + keycloakClient.getAccessToken();
-        logger.info("Token: " + this.bearerToken);
+    }
+
+    public boolean disconnect() throws IOException {
+        this.keycloakClient.disconnect();
+        this.username = null;
+        this.password = null;
+        this.bearerToken = null;
+        return true;
     }
 
     // Method to send GET request
@@ -132,5 +151,23 @@ public class SimvaApiClient {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonNode = objectMapper.readTree(response.body().byteStream());
         return this.parseJson(objectMapper, jsonNode);
+    }
+
+    public Boolean checkSQLVersion() {
+        try {
+            Map<String, Object> versionInfo = this.sendGetRequest("/health");
+            if(versionInfo.containsKey("db") && versionInfo.get("db") instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> dbInfo = (Map<String, Object>) versionInfo.get("db");
+                if(dbInfo.containsKey("status")) {
+                    return (Boolean) dbInfo.get("status");
+                }
+            }
+            logger.info("Version info does not contain 'db.status' key: " + versionInfo);
+            return false;
+        } catch (IOException e) {
+            logger.info("Error checking SIMVA API version: " + e.toString());
+            return false;
+        }
     }
 }

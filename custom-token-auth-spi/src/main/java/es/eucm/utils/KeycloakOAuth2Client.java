@@ -48,7 +48,6 @@ public class KeycloakOAuth2Client {
                 JsonNode jsonNode = objectMapper.readTree(responseBody);
                 this.accessToken = jsonNode.get("access_token").asText();
                 this.refreshToken = jsonNode.get("refresh_token").asText();
-                logger.info("Access Token: Bearer " + this.accessToken);
                 return true;
             } else {
                 logger.info("Error: " + response.code() + " - " + response.body().string());

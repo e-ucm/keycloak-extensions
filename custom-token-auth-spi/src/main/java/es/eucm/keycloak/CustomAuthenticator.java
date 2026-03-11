@@ -77,9 +77,9 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
             stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
         }
         if(simvaUserTokenPresent != null && simvaUserTokenPresent.equals("true")) {
-            String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
-            if(study != "") {
-                stringurl.append("&login_hint=").append(study);
+            String login_hint = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
+            if(login_hint != "") {
+                stringurl.append("&login_hint=").append(login_hint);
             }
             stringurl.append("&simva_user_token=true");
             logger.info(stringurl.toString());
@@ -160,11 +160,11 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     errorMsg=Messages.INVALID_VALUE;
                 }
                 logger.info("AUTHENTICATE token custom provider: " + username);
-                String study = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
-                logger.info("Study: " + study);
+                String login_hint = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
+                logger.info("Study: " + login_hint);
                 SimpleEntry<Boolean, String> validate;
                 try {
-                    validate = this.simvaKeycloakCheck.checkTokenInStudy(study, username);
+                    validate = this.simvaKeycloakCheck.checkTokenWithLoginHint(username, login_hint);
                 } catch(IOException e) {
                     logger.info(e.toString());
                     validate = new SimpleEntry<>(false, null);
@@ -172,12 +172,28 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 if(validate.getKey()) {
                     String updatedUsername = validate.getValue();
                     // Set the new username in the authentication session
-                    context.setUser(context.getSession().users().getUserByUsername(context.getRealm(), updatedUsername));
+                    UserModel user = context.getSession().users().getUserByUsername(context.getRealm(), updatedUsername);
+                    if (user == null) {
+                        logger.info("User not found in Keycloak: " + updatedUsername);
+                        if(login_hint != null && !login_hint.isEmpty()) {
+                            stringurl.append("&login_hint=").append(login_hint);
+                        }
+                        stringurl.append("&simva_user_token=true");
+                        Response challengeResponse = context.form()
+                            .setError(Messages.INVALID_VALUE)
+                            .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
+                            .setAttribute("simvaUserToken", "true")
+                            .setAttribute("stringurl", stringurl.toString())
+                            .createForm("login.ftl");
+                        context.challenge(challengeResponse);
+                        return;
+                    }
+                    context.setUser(user);
                     context.success(); // Proceed if token is valid
                     return;
                 } else {
-                    if(study != "") {
-                        stringurl.append("&login_hint=").append(study);
+                    if(login_hint != "") {
+                        stringurl.append("&login_hint=").append(login_hint);
                     }
                     stringurl.append("&simva_user_token=true");
                     logger.info(stringurl.toString());
@@ -208,7 +224,18 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 }
                 if(valid) {
                     // Set the username in the authentication session
-                    context.setUser(context.getSession().users().getUserByUsername(context.getRealm(), username));
+                    UserModel user = context.getSession().users().getUserByUsername(context.getRealm(), username);
+                    if (user == null) {
+                        logger.info("User not found in Keycloak: " + username);
+                        Response challengeResponse = context.form()
+                            .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
+                            .setAttribute("stringurl", stringurl.toString())
+                            .setError(Messages.INVALID_USERNAME_OR_PASSWORD)
+                            .createForm("login.ftl");
+                        context.challenge(challengeResponse);
+                        return;
+                    }
+                    context.setUser(user);
                     context.success(); // Proceed if token is valid
                     return;
                 } else {
