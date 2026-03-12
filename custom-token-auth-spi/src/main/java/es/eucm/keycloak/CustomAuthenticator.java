@@ -25,6 +25,45 @@ import java.io.IOException;
 
 import java.util.AbstractMap.SimpleEntry;
 
+/**
+ * Custom Keycloak Authenticator for SIMVA integration.
+ * 
+ * <p>This authenticator extends Keycloak's browser-based authentication flow to support
+ * two authentication methods:</p>
+ * <ul>
+ *   <li><b>Token Authentication:</b> Users authenticate using a SIMVA-issued token
+ *       (triggered by the query parameter {@code simva_user_token=true})</li>
+ *   <li><b>Username/Password Authentication:</b> Standard credential-based authentication
+ *       validated against SIMVA API</li>
+ * </ul>
+ * 
+ * <h2>Login Hint Support</h2>
+ * <p>The authenticator uses the OIDC {@code login_hint} parameter to specify the study context.
+ * The login_hint format can be:</p>
+ * <ul>
+ *   <li>{@code study_id} - Access to a specific study</li>
+ *   <li>{@code study_id:session_id:activity_id} - Access to a specific activity within a study session</li>
+ * </ul>
+ * 
+ * <h2>SSO Session Handling</h2>
+ * <p>When a user has an existing SSO session, the authenticator validates that the session
+ * matches the requested login_hint. If mismatch is detected, the existing session is invalidated
+ * to force re-authentication with the correct context.</p>
+ * 
+ * <h2>Environment Variables Required</h2>
+ * <ul>
+ *   <li>{@code SIMVA_API_URL} - Base URL of the SIMVA API</li>
+ *   <li>{@code SIMVA_API_ADMIN_USERNAME} - Admin username for SIMVA API</li>
+ *   <li>{@code SIMVA_API_ADMIN_PASSWORD} - Admin password for SIMVA API</li>
+ *   <li>{@code KEYCLOAK_TOKEN_URL} - Keycloak token endpoint URL</li>
+ *   <li>{@code KEYCLOAK_CLIENT_CLIENT_ID} - OAuth2 client ID</li>
+ *   <li>{@code KEYCLOAK_CLIENT_CLIENT_SECRET} - OAuth2 client secret</li>
+ * </ul>
+ * 
+ * @author e-UCM Research Group
+ * @see CustomAuthenticatorFactory
+ * @see SimvaKeycloakCheck
+ */
 public class CustomAuthenticator extends AbstractUsernameFormAuthenticator implements Authenticator {
 
     private final Logger logger = LoggerFactory.getLogger(CustomAuthenticator.class);
@@ -34,6 +73,19 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
     private final KeycloakSession session;
     private SimvaKeycloakCheck simvaKeycloakCheck;
 
+    /**
+     * Constructs a new CustomAuthenticator instance.
+     * 
+     * <p>During construction, the authenticator:</p>
+     * <ol>
+     *   <li>Initializes the SIMVA API client and validates admin credentials</li>
+     *   <li>Checks for existing SSO sessions using Keycloak's identity cookie</li>
+     *   <li>If an SSO session exists, validates it against the login_hint</li>
+     *   <li>Invalidates mismatched sessions to force proper re-authentication</li>
+     * </ol>
+     * 
+     * @param session The Keycloak session providing access to realm, users, and authentication context
+     */
     public CustomAuthenticator(KeycloakSession session) {
         logger.info("CustomAuthenticator constructor called");
         simvaKeycloakCheck= new SimvaKeycloakCheck();
@@ -95,10 +147,22 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
     }
 
     /**
-     * Method is used for user authentication. It authentificate via password and username or via token and that returns a jwt token if the user is authenticated
-     * If the user is authenticated an authenticated user is set.
-     * Whereas if the user is not authenticated, an error is set.
-     * @param context
+     * Initiates the authentication flow by displaying the appropriate login form.
+     * 
+     * <p>This method determines which login form to display based on the request parameters:</p>
+     * <ul>
+     *   <li>If {@code simva_user_token=true} is present, displays the token authentication form</li>
+     *   <li>Otherwise, displays the standard username/password form</li>
+     * </ul>
+     * 
+     * <p>The method also handles:</p>
+     * <ul>
+     *   <li>Pre-populating the username field with login_hint or remember-me values</li>
+     *   <li>Hiding the username field if a user is already set in the context</li>
+     *   <li>Passing through display customization parameters (e.g., hideLocaleDropdown)</li>
+     * </ul>
+     * 
+     * @param context The authentication flow context containing request data, session, and form builder
      */
     @Override
     public void authenticate(AuthenticationFlowContext context) {
@@ -161,6 +225,13 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         }
     }
 
+    /**
+     * Creates the login challenge response with the appropriate form.
+     * 
+     * @param forms The login forms provider for creating the response
+     * @param formData Pre-populated form data (e.g., username from login_hint)
+     * @return The HTTP response containing the login form
+     */
     protected Response challenge(LoginFormsProvider forms, MultivaluedMap<String, String> formData) {
         logger.info("Creating challenge response with form data: " + formData);
         if (formData.size() > 0) forms.setFormData(formData);
@@ -168,6 +239,11 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         return forms.createLoginUsernamePassword();
     }
 
+    /**
+     * Utility method to log the contents of a MultivaluedMap for debugging.
+     * 
+     * @param formData The map containing form parameters or query parameters to log
+     */
     public void logMap(MultivaluedMap<String, String> formData) {
         StringBuilder logMessage = new StringBuilder();
 
@@ -188,6 +264,30 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         logger.info("Data: {}", logMessage.toString());
     }
 
+    /**
+     * Processes the submitted authentication form.
+     * 
+     * <p>This method handles two authentication modes:</p>
+     * 
+     * <h3>Token Authentication (simva_user_token=true)</h3>
+     * <ol>
+     *   <li>Extracts the token from the username field</li>
+     *   <li>Validates the token against SIMVA API using {@link SimvaKeycloakCheck#checkTokenWithLoginHint}</li>
+     *   <li>Resolves the token to the actual Keycloak username</li>
+     *   <li>On success, sets the authenticated user and completes the flow</li>
+     *   <li>On failure, displays an appropriate error message (invalid token, wrong activity, etc.)</li>
+     * </ol>
+     * 
+     * <h3>Username/Password Authentication</h3>
+     * <ol>
+     *   <li>Validates credentials against SIMVA API using {@link SimvaKeycloakCheck#checkUsernamePassword}</li>
+     *   <li>Verifies the user is not a token-only user (they must use token auth)</li>
+     *   <li>On success, sets the authenticated user and completes the flow</li>
+     *   <li>On failure, displays the appropriate error message</li>
+     * </ol>
+     * 
+     * @param context The authentication flow context containing submitted form data
+     */
     @Override
     public void action(AuthenticationFlowContext context) {
         logger.info("CUSTOMER PROVIDER action method called");

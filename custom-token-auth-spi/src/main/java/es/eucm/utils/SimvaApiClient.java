@@ -18,17 +18,71 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.core.type.TypeReference;
 import okhttp3.*;
 
+/**
+ * HTTP client for communicating with the SIMVA REST API.
+ * 
+ * <p>This client provides authenticated access to the SIMVA API, handling:
+ * <ul>
+ *   <li>OAuth2 token management via Keycloak</li>
+ *   <li>Automatic token refresh using refresh tokens</li>
+ *   <li>Admin and user authentication modes</li>
+ *   <li>GET and POST requests with JSON payloads</li>
+ * </ul>
+ * 
+ * <h2>Authentication Modes</h2>
+ * <ul>
+ *   <li><b>Admin Mode:</b> Authenticates using admin credentials from environment variables.
+ *       Admin sessions are preserved across requests for connection pooling.</li>
+ *   <li><b>User Mode:</b> Authenticates as a specific user. Session is cleared after use
+ *       to avoid cross-user contamination.</li>
+ * </ul>
+ * 
+ * <h2>Token Management</h2>
+ * <p>The client implements intelligent token refresh:</p>
+ * <ol>
+ *   <li>Checks if current token is valid (with 30-second buffer before expiry)</li>
+ *   <li>Attempts refresh using stored refresh token if available</li>
+ *   <li>Falls back to credential-based authentication if refresh fails</li>
+ * </ol>
+ * 
+ * <h2>Environment Variables</h2>
+ * <ul>
+ *   <li>{@code SIMVA_API_URL} - Base URL of the SIMVA API</li>
+ *   <li>{@code SIMVA_API_ADMIN_USERNAME} - Admin username</li>
+ *   <li>{@code SIMVA_API_ADMIN_PASSWORD} - Admin password</li>
+ * </ul>
+ * 
+ * @author e-UCM Research Group
+ * @see KeycloakOAuth2Client
+ * @see SimvaApiConfig
+ */
 public class SimvaApiClient {
     private static final Logger logger = Logger.getLogger(SimvaApiClient.class);
+    
+    /** Shared Keycloak OAuth2 client for token operations */
     private static KeycloakOAuth2Client keycloakClient = new KeycloakOAuth2Client();
 
+    /** Configuration loaded from environment variables */
     private static SimvaApiConfig apiConfig = new SimvaApiConfig();
+    
+    /** Current authenticated username */
     private String username;
+    
+    /** Current password (cleared after authentication) */
     private String password;
+    
+    /** Bearer token for API requests */
     private String bearerToken;
+    
+    /** OkHttp client for making HTTP requests */
     private OkHttpClient client;
-    private boolean isAdminAuth = false; // Track if this is an admin authentication
+    
+    /** Flag indicating if this client is authenticated as admin */
+    private boolean isAdminAuth = false;
 
+    /**
+     * Constructs a new SimvaApiClient with a fresh HTTP client instance.
+     */
     public SimvaApiClient() {
         try {
             // Create a new HTTP client
@@ -38,6 +92,11 @@ public class SimvaApiClient {
         }
     }
 
+    /**
+     * Checks if the client currently has a valid authentication token.
+     * 
+     * @return true if bearer token exists and is not expired
+     */
     public boolean isAuthentificated() {
         return this.bearerToken != null && !keycloakClient.isTokenExpired();
     }
@@ -98,6 +157,12 @@ public class SimvaApiClient {
         return authenticate();
     }
 
+    /**
+     * Authenticates using admin credentials from environment variables.
+     * 
+     * @return true if authentication succeeds
+     * @throws IOException If authentication request fails
+     */
     public boolean authenticate() throws IOException {
         boolean result = authenticate(apiConfig.getAdminUsername(), apiConfig.getAdminPassword());
         if (result) {
@@ -106,6 +171,17 @@ public class SimvaApiClient {
         return result;
     }
 
+    /**
+     * Authenticates with specific username and password credentials.
+     * 
+     * <p>Obtains an OAuth2 access token from Keycloak using the
+     * Resource Owner Password Credentials grant.</p>
+     * 
+     * @param username The username to authenticate with
+     * @param password The password to authenticate with
+     * @return true if authentication succeeds
+     * @throws IOException If authentication request fails
+     */
     public boolean authenticate(String username, String password) throws IOException {
         // Validate admin credentials to get a token
         boolean isValid = keycloakClient.validateUserCredentials(username, password);
@@ -146,6 +222,15 @@ public class SimvaApiClient {
         return true;
     }
 
+    /**
+     * Disconnects the current session.
+     * 
+     * <p>For admin sessions, only clears user context while preserving
+     * the admin authentication. For user sessions, fully disconnects.</p>
+     * 
+     * @return true if disconnect succeeds
+     * @throws IOException If logout request fails
+     */
     public boolean disconnect() throws IOException {
         // Only disconnect if not admin auth (preserve admin session)
         if (!this.isAdminAuth) {
@@ -159,8 +244,13 @@ public class SimvaApiClient {
     }
 
     /**
-     * Force disconnect, including admin session.
-     * Use this when you want to completely clear the session.
+     * Forces a complete disconnect, including admin sessions.
+     * 
+     * <p>Use this when you need to completely clear all authentication
+     * state, for example during error recovery.</p>
+     * 
+     * @return true if disconnect succeeds
+     * @throws IOException If logout request fails
      */
     public boolean forceDisconnect() throws IOException {
         this.keycloakClient.disconnect();
@@ -171,7 +261,13 @@ public class SimvaApiClient {
         return true;
     }
 
-    // Method to send GET request
+    /**
+     * Sends an authenticated GET request to the SIMVA API.
+     * 
+     * @param concat_url The path to append to the base API URL (e.g., "/studies/123")
+     * @return Parsed JSON response as a Map, or empty map for unexpected structures
+     * @throws IOException If the request fails
+     */
     public Map<String, Object> sendGetRequest(String concat_url) throws IOException {
         // Construct the URL
         String urlString = apiConfig.getApiUrl() + concat_url;
@@ -200,6 +296,19 @@ public class SimvaApiClient {
         return this.parseJson(objectMapper, jsonNode);
     }
 
+    /**
+     * Parses a JSON response into a Map structure.
+     * 
+     * <p>Handles both array and object responses:</p>
+     * <ul>
+     *   <li>Arrays are converted to Maps with string index keys ("0", "1", etc.)</li>
+     *   <li>Objects are directly converted to Maps</li>
+     * </ul>
+     * 
+     * @param objectMapper The Jackson ObjectMapper instance
+     * @param jsonNode The parsed JSON node
+     * @return Map representation of the JSON, or empty map for unexpected types
+     */
     public Map<String, Object> parseJson(ObjectMapper objectMapper, JsonNode jsonNode) {
         if (jsonNode.isArray()) {
             List<Map<String, Object>> responseList = objectMapper.convertValue(jsonNode, new TypeReference<>() {});
@@ -219,7 +328,14 @@ public class SimvaApiClient {
         }
     }
 
-    //// Method to send POST request with JSON body (if needed)
+    /**
+     * Sends an authenticated POST request to the SIMVA API with a JSON body.
+     * 
+     * @param concat_url The path to append to the base API URL
+     * @param jsonBody The JSON string to send as the request body
+     * @return Parsed JSON response as a Map
+     * @throws IOException If the request fails
+     */
     public Map<String, Object> sendPostRequest(String concat_url, String jsonBody) throws IOException {
         // Construct the URL
         String urlString = apiConfig.getApiUrl() + concat_url;
@@ -254,6 +370,14 @@ public class SimvaApiClient {
         return this.parseJson(objectMapper, jsonNode);
     }
 
+    /**
+     * Checks if SIMVA API is running SQL version by querying the health endpoint.
+     * 
+     * <p>The SQL version is indicated by {@code db.status = true} in the
+     * {@code /health} endpoint response.</p>
+     * 
+     * @return true if SQL version, false if NoSQL version or unable to determine
+     */
     public Boolean checkSQLVersion() {
         try {
             Map<String, Object> versionInfo = this.sendGetRequest("/health");

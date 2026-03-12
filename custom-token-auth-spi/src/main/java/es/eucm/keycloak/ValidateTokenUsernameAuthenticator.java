@@ -32,13 +32,69 @@ import java.util.AbstractMap.SimpleEntry;
 
 import static org.keycloak.authentication.authenticators.util.AuthenticatorUtils.getDisabledByBruteForceEventError;
 
+/**
+ * Direct Grant Authenticator for validating SIMVA tokens via the Resource Owner Password Grant.
+ * 
+ * <p>This authenticator extends Keycloak's Direct Grant (Resource Owner Password Credentials)
+ * flow to support SIMVA token-based authentication. It is used for machine-to-machine
+ * authentication where the client application directly submits credentials.</p>
+ * 
+ * <h2>Authentication Modes</h2>
+ * <ul>
+ *   <li><b>Token with Login Hint:</b> When {@code login_hint} parameter is present,
+ *       the username is treated as a SIMVA token and validated against the study context</li>
+ *   <li><b>Username/Password:</b> When no login_hint is present, standard credential
+ *       validation is performed against SIMVA API</li>
+ * </ul>
+ * 
+ * <h2>Request Parameters</h2>
+ * <ul>
+ *   <li>{@code username} - SIMVA token or username</li>
+ *   <li>{@code password} - Password (same as token for token auth)</li>
+ *   <li>{@code login_hint} - Study context in format {@code study_id} or {@code study_id:session_id:activity_id}</li>
+ * </ul>
+ * 
+ * <h2>Usage Example</h2>
+ * <pre>
+ * POST /realms/{realm}/protocol/openid-connect/token
+ * Content-Type: application/x-www-form-urlencoded
+ * 
+ * grant_type=password&amp;
+ * client_id=simva-client&amp;
+ * client_secret=secret&amp;
+ * username=ABC123&amp;
+ * password=ABC123&amp;
+ * login_hint=study-001
+ * </pre>
+ * 
+ * @author e-UCM Research Group
+ * @see SimvaKeycloakCheck
+ */
 public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthenticator {
     
     private final Logger logger = LoggerFactory.getLogger(ValidateTokenUsernameAuthenticator.class);
+    
+    /**
+     * Unique identifier for this authenticator provider.
+     */
     public static final String PROVIDER_ID = "direct-grant-validate-token-username";
 
     private SimvaKeycloakCheck simvaKeycloakCheck;
 
+    /**
+     * Authenticates a direct grant request by validating the submitted credentials.
+     * 
+     * <p>The authentication process:</p>
+     * <ol>
+     *   <li>If {@code login_hint} is present, validates username as a SIMVA token</li>
+     *   <li>If no login_hint, validates username/password against SIMVA API</li>
+     *   <li>Resolves the token to the actual Keycloak username</li>
+     *   <li>Looks up the user in Keycloak and sets them in the context</li>
+     *   <li>Performs brute force and disabled user checks</li>
+     * </ol>
+     * 
+     * @param context The authentication flow context containing the request parameters
+     */
     @Override
     public void authenticate(AuthenticationFlowContext context) {
         logger.info("ValidateTokenUsernameAuthenticator authenticate method called");
@@ -123,6 +179,11 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
         context.success();
     }
 
+    /**
+     * Utility method to log the contents of a MultivaluedMap for debugging.
+     * 
+     * @param formData The map containing form parameters to log
+     */
     public void logMap(MultivaluedMap<String, String> formData) {
         StringBuilder logMessage = new StringBuilder();
 
@@ -143,21 +204,46 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
         logger.info("Data: {}", logMessage.toString());
     }
 
+    /**
+     * Indicates whether this authenticator requires a user to be set before execution.
+     * 
+     * @return false - this authenticator identifies the user during execution
+     */
     @Override
     public boolean requiresUser() {
         return false;
     }
 
+    /**
+     * Indicates whether this authenticator is configured for the given user.
+     * 
+     * @param session The Keycloak session
+     * @param realm The realm
+     * @param user The user model
+     * @return true - always configured
+     */
     @Override
     public boolean configuredFor(KeycloakSession session, RealmModel realm, UserModel user) {
         return true;
     }
 
+    /**
+     * Sets required actions for the user after authentication.
+     * 
+     * @param session The Keycloak session
+     * @param realm The realm
+     * @param user The authenticated user
+     */
     @Override
     public void setRequiredActions(KeycloakSession session, RealmModel realm, UserModel user) {
 
     }
 
+    /**
+     * Returns the display name shown in admin console.
+     * 
+     * @return "Username Token Validation"
+     */
     @Override
     public String getDisplayType() {
         return "Username Token Validation";

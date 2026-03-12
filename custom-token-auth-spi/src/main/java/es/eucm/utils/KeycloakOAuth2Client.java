@@ -10,19 +10,71 @@ import okhttp3.*;
 
 import java.io.IOException;
 
+/**
+ * OAuth2 client for obtaining and managing access tokens from Keycloak.
+ * 
+ * <p>This client handles the OAuth2 Resource Owner Password Credentials (ROPC)
+ * grant type for authenticating users and obtaining JWT access tokens.</p>
+ * 
+ * <h2>Token Lifecycle Management</h2>
+ * <p>The client tracks token expiration times and provides methods for:</p>
+ * <ul>
+ *   <li>Checking if the current token is expired (with configurable buffer)</li>
+ *   <li>Checking if the refresh token is still valid</li>
+ *   <li>Refreshing the access token using the refresh token</li>
+ * </ul>
+ * 
+ * <h2>Expiration Buffer</h2>
+ * <p>A 30-second buffer ({@link #TOKEN_EXPIRY_BUFFER_MS}) is used before the actual
+ * expiration time to account for network latency and ensure tokens don't expire
+ * mid-request.</p>
+ * 
+ * <h2>Environment Variables Required</h2>
+ * <ul>
+ *   <li>{@code KEYCLOAK_TOKEN_URL} - Full URL to Keycloak's token endpoint</li>
+ *   <li>{@code KEYCLOAK_CLIENT_CLIENT_ID} - OAuth2 client ID</li>
+ *   <li>{@code KEYCLOAK_CLIENT_CLIENT_SECRET} - OAuth2 client secret</li>
+ * </ul>
+ * 
+ * @author e-UCM Research Group
+ * @see KeycloakConfig
+ * @see SimvaApiClient
+ */
 public class KeycloakOAuth2Client {
     private static final Logger logger = Logger.getLogger(KeycloakOAuth2Client.class);
 
-    private static final OkHttpClient sharedHttpClient = new OkHttpClient(); // Singleton instance
+    /** Shared OkHttp client instance for connection pooling */
+    private static final OkHttpClient sharedHttpClient = new OkHttpClient();
+    
+    /** Configuration loaded from environment variables */
     private static final KeycloakConfig apiConfig = new KeycloakConfig();
+    
+    /** Jackson ObjectMapper for JSON parsing */
     private final ObjectMapper objectMapper;
+    
+    /** Current OAuth2 access token */
     private String accessToken;
+    
+    /** Current OAuth2 refresh token */
     private String refreshToken;
-    private long tokenExpirationTime; // Unix timestamp in milliseconds when token expires
-    private long refreshTokenExpirationTime; // Unix timestamp in milliseconds when refresh token expires
-    private static final long TOKEN_EXPIRY_BUFFER_MS = 30000; // 30 seconds buffer before expiry
-    private static final long REFRESH_TOKEN_DEFAULT_EXPIRY_MS = 1800000; // Default 30 minutes for refresh token
+    
+    /** Unix timestamp (ms) when access token expires */
+    private long tokenExpirationTime;
+    
+    /** Unix timestamp (ms) when refresh token expires */
+    private long refreshTokenExpirationTime;
+    
+    /** Buffer time (30 seconds) before token expiry to trigger refresh */
+    private static final long TOKEN_EXPIRY_BUFFER_MS = 30000;
+    
+    /** Default refresh token lifetime (30 minutes) if not specified in response */
+    private static final long REFRESH_TOKEN_DEFAULT_EXPIRY_MS = 1800000;
 
+    /**
+     * Returns the current access token.
+     * 
+     * @return The JWT access token string, or null if not authenticated
+     */
     public String getAccessToken() {
         return this.accessToken;
     }
@@ -108,10 +160,24 @@ public class KeycloakOAuth2Client {
         }
     }
     
+    /**
+     * Constructs a new KeycloakOAuth2Client with a fresh ObjectMapper.
+     */
     public KeycloakOAuth2Client() {
         this.objectMapper = new ObjectMapper();
     }
 
+    /**
+     * Validates user credentials by obtaining an access token from Keycloak.
+     * 
+     * <p>Uses the OAuth2 Resource Owner Password Credentials (ROPC) grant type
+     * to exchange username/password for access and refresh tokens.</p>
+     * 
+     * @param username The username to authenticate
+     * @param password The password to authenticate
+     * @return true if credentials are valid and tokens were obtained
+     * @throws IOException If the authentication request fails
+     */
     public boolean validateUserCredentials(String username, String password) throws IOException {
         logger.info("validateUserCredentials : " + username);
         RequestBody formBody = new FormBody.Builder()
@@ -147,8 +213,15 @@ public class KeycloakOAuth2Client {
                 return false;
             }
         }
-    }
-
+    /**
+     * Disconnects by logging out from Keycloak and invalidating tokens.
+     * 
+     * <p>Sends a logout request to Keycloak's logout endpoint and clears
+     * all local token state. Also cleans up OkHttp connection pool resources.</p>
+     * 
+     * @return true if logout succeeds or no active session
+     * @throws IOException If the logout request fails
+     */
     public boolean disconnect() throws IOException {
 
         if (this.accessToken != null) {

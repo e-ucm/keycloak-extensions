@@ -2,7 +2,7 @@ package es.eucm.utils;
 
 import es.eucm.utils.SimvaApiClient;
 import es.eucm.utils.KeycloakOAuth2Client;
-    import java.util.AbstractMap.SimpleEntry;
+import java.util.AbstractMap.SimpleEntry;
 
 import java.io.IOException;
 import java.util.List;
@@ -10,14 +10,78 @@ import java.util.Map;
 
 import org.jboss.logging.Logger;
 
+/**
+ * Core authentication and authorization validation service for SIMVA-Keycloak integration.
+ * 
+ * <p>This class is responsible for validating user access to SIMVA studies, sessions,
+ * and activities. It acts as the bridge between Keycloak's authentication flow and
+ * the SIMVA API.</p>
+ * 
+ * <h2>Key Responsibilities</h2>
+ * <ul>
+ *   <li>Validate SIMVA tokens against study participants</li>
+ *   <li>Verify username/password credentials via SIMVA API</li>
+ *   <li>Check scheduler access for activities</li>
+ *   <li>Enforce token-only authentication for token users</li>
+ *   <li>Support both SQL and NoSQL versions of SIMVA API</li>
+ * </ul>
+ * 
+ * <h2>API Version Detection</h2>
+ * <p>The class automatically detects whether the SIMVA API is running in SQL or NoSQL
+ * mode by checking the {@code /health} endpoint. This affects:</p>
+ * <ul>
+ *   <li>Endpoint paths ({@code /simlets/} vs {@code /studies/})</li>
+ *   <li>Field names ({@code simlet} vs {@code study}, {@code session} vs {@code test})</li>
+ *   <li>Group and participant lookup structures</li>
+ * </ul>
+ * 
+ * <h2>Return Value Convention</h2>
+ * <p>Most validation methods return {@code SimpleEntry<Boolean, String>} where:</p>
+ * <ul>
+ *   <li><b>Success:</b> {@code (true, username)} - The resolved Keycloak username</li>
+ *   <li><b>Failure:</b> {@code (false, errorCode)} - Error code from {@link Messages}</li>
+ * </ul>
+ * 
+ * <h2>Thread Safety</h2>
+ * <p>This class uses static API clients for connection pooling. Each instance
+ * shares the admin and user clients, but isSQLVersion is instance-specific
+ * to avoid race conditions during version detection.</p>
+ * 
+ * @author e-UCM Research Group
+ * @see SimvaApiClient
+ * @see KeycloakOAuth2Client
+ * @see Messages
+ */
 public class SimvaKeycloakCheck {
     private static final Logger logger = Logger.getLogger(SimvaKeycloakCheck.class);
 
+    /** Shared admin client for privileged SIMVA API operations */
     private static SimvaApiClient simvaAdminClient = new SimvaApiClient();
+    
+    /** Shared user client for user-scoped SIMVA API operations */
     private static SimvaApiClient simvaUserClient = new SimvaApiClient();
+    
+    /** Shared Keycloak OAuth2 client for token operations */
     private static KeycloakOAuth2Client keycloakClient = new KeycloakOAuth2Client();
+    
+    /** 
+     * Flag indicating whether SIMVA API is running SQL version.
+     * Null until first request triggers version detection.
+     */
     private Boolean isSQLVersion = null;
     
+    /**
+     * Constructs a new SimvaKeycloakCheck instance.
+     * 
+     * <p>During construction:</p>
+     * <ol>
+     *   <li>Ensures admin client is authenticated (uses refresh token if available)</li>
+     *   <li>Determines SIMVA API version (SQL vs NoSQL)</li>
+     * </ol>
+     * 
+     * <p>If authentication or version detection fails, the error is logged
+     * and operations will be retried on subsequent method calls.</p>
+     */
     public SimvaKeycloakCheck() {
         try {
             // Use ensureAdminAuthenticated to avoid re-authenticating if token is still valid
@@ -240,6 +304,21 @@ public class SimvaKeycloakCheck {
         return false;
     }
 
+    /**
+     * Validates username/password credentials against SIMVA API.
+     * 
+     * <p>This method:</p>
+     * <ol>
+     *   <li>Authenticates with SIMVA using provided credentials</li>
+     *   <li>Verifies the user is not a token-only user</li>
+     *   <li>Returns the validated username on success</li>
+     * </ol>
+     * 
+     * @param username The username to validate
+     * @param password The password to validate
+     * @return SimpleEntry with (true, username) on success, or (false, errorCode) on failure
+     * @throws IOException If communication with SIMVA API fails
+     */
     public SimpleEntry<Boolean, String> checkUsernamePassword(String username, String password) throws IOException {
         if(simvaUserClient.authenticate(username, password)) {
             logger.info("Validated user credentials");
@@ -250,6 +329,18 @@ public class SimvaKeycloakCheck {
         }
     }
 
+    /**
+     * Verifies that an authenticated user is not a token-only user.
+     * 
+     * <p>Token users must authenticate via token authentication flow, not
+     * username/password. This method checks the {@code isToken} flag from
+     * the SIMVA API {@code /users/me} endpoint.</p>
+     * 
+     * @param username The username to check
+     * @return SimpleEntry with (true, username) if user can use password auth,
+     *         or (false, TOKEN_USER_MUST_USE_TOKEN_AUTHENTIFICATION) if token-only
+     * @throws IOException If communication with SIMVA API fails
+     */
     public SimpleEntry<Boolean, String> checkUserAccessNotATokenForAuthenticatedUser(String username) throws IOException {
         // Check if user is a token user, if so invalidate credentials since they must use token authentication
         // Use simvaUserClient (already authenticated as this user) to get /users/me
@@ -384,6 +475,21 @@ public class SimvaKeycloakCheck {
         return false;
     }
 
+    /**
+     * Validates a token within a study context (study only, no specific activity).
+     * 
+     * <p>Validation process:</p>
+     * <ol>
+     *   <li>Attempts direct token authentication (token as both username and password)</li>
+     *   <li>If direct auth fails, searches study groups for matching participant token</li>
+     *   <li>Verifies user has access to the study schedule</li>
+     * </ol>
+     * 
+     * @param study The study ID to validate against
+     * @param token The SIMVA token to validate
+     * @return SimpleEntry with (true, resolvedUsername) on success, or (false, errorCode) on failure
+     * @throws IOException If communication with SIMVA API fails
+     */
     public SimpleEntry<Boolean, String> checkTokenInStudy(String study, String token) throws IOException {
         SimpleEntry<Boolean, String> authResult = new SimpleEntry<>(false, null);
         // Try direct token authentication first
@@ -420,6 +526,24 @@ public class SimvaKeycloakCheck {
         }
     }
 
+    /**
+     * Validates a token for a specific study, session, and activity.
+     * 
+     * <p>Validation process:</p>
+     * <ol>
+     *   <li>Attempts direct token authentication</li>
+     *   <li>If direct auth fails, searches study groups for matching participant token</li>
+     *   <li>Verifies the specified activity is the current scheduled activity</li>
+     *   <li>Checks activity restart permissions if activity was completed</li>
+     * </ol>
+     * 
+     * @param study The study ID
+     * @param session The session ID
+     * @param activity The activity ID
+     * @param token The SIMVA token to validate
+     * @return SimpleEntry with (true, resolvedUsername) on success, or (false, errorCode) on failure
+     * @throws IOException If communication with SIMVA API fails
+     */
     public SimpleEntry<Boolean, String> checkTokenInStudyAndActivity(String study, String session, String activity, String token) throws IOException {
         SimpleEntry<Boolean, String> authResult = new SimpleEntry<>(false, null);
         // Try direct token authentication first
@@ -457,6 +581,13 @@ public class SimvaKeycloakCheck {
         }
     }
 
+    /**
+     * Attempts to authenticate directly using token as both username and password.
+     * 
+     * @param token The token to authenticate with
+     * @return true if direct authentication succeeds, false otherwise
+     * @throws IOException If communication fails
+     */
     private Boolean tryDirectTokenAuth(String token) throws IOException {
         if (simvaUserClient.authenticate(token, token)) {
             logger.info("Validated token");
@@ -467,6 +598,20 @@ public class SimvaKeycloakCheck {
         }
     }
 
+    /**
+     * Handles token lookup for SQL version of SIMVA API.
+     * 
+     * <p>SQL version uses:</p>
+     * <ul>
+     *   <li>Endpoint: {@code /simlets/{study}/groups}</li>
+     *   <li>Username format: {@code {study}_{token}}</li>
+     *   <li>Group ID field: {@code group_id}</li>
+     * </ul>
+     * 
+     * @param study The study ID
+     * @param token The token to look up
+     * @return SimpleEntry with authentication result and resolved username
+     */
     private SimpleEntry<Boolean, String> handleSQLVersionTokenCheck(String study, String token) {
         logger.info("Using SQL version of SIMVA API");
         
@@ -481,6 +626,13 @@ public class SimvaKeycloakCheck {
         return searchParticipantsForToken(study, token);
     }
 
+    /**
+     * Searches all groups in a study for a participant matching the given token.
+     * 
+     * @param study The study ID to search
+     * @param token The token to match
+     * @return SimpleEntry with authentication result and resolved username
+     */
     private SimpleEntry<Boolean, String> searchParticipantsForToken(String study, String token) {
         try {
             
@@ -512,6 +664,14 @@ public class SimvaKeycloakCheck {
         return new SimpleEntry<>(false, null);
     }
 
+    /**
+     * Searches participants within a specific group for the matching token.
+     * 
+     * @param study The study ID
+     * @param groupId The group ID to search
+     * @param token The token to match
+     * @return SimpleEntry with authentication result and resolved username
+     */
     private SimpleEntry<Boolean, String> searchGroupParticipantsForToken(String study, String groupId, String token) {
         try {
             String requestUrl;
@@ -545,6 +705,13 @@ public class SimvaKeycloakCheck {
         return new SimpleEntry<>(false, null);
     }
 
+    /**
+     * Checks if a participant record matches the given token.
+     * 
+     * @param participant The participant map from SIMVA API
+     * @param token The token to match
+     * @return true if participant isToken=true and token field matches
+     */
     private Boolean isMatchingTokenParticipant(Map<String, Object> participant, String token) {
         if (token == null || token.isEmpty()) {
             return false;
@@ -563,6 +730,20 @@ public class SimvaKeycloakCheck {
         return !participantToken.isEmpty() && participantToken.equals(token);
     }
 
+    /**
+     * Handles token lookup for NoSQL version of SIMVA API.
+     * 
+     * <p>NoSQL version uses:</p>
+     * <ul>
+     *   <li>Endpoint: {@code /studies/{study}/groups}</li>
+     *   <li>Username format: {@code {groupId}_{token}}</li>
+     *   <li>Group ID field: {@code _id}</li>
+     * </ul>
+     * 
+     * @param study The study ID
+     * @param token The token to look up
+     * @return SimpleEntry with authentication result and resolved username
+     */
     private SimpleEntry<Boolean, String> handleNoSQLVersionTokenCheck(String study, String token) {
         logger.info("Using NoSQL version of SIMVA API");
         
@@ -590,6 +771,13 @@ public class SimvaKeycloakCheck {
         return new SimpleEntry<>(false, null);
     }
 
+    /**
+     * Attempts authentication with a resolved username and the original token as password.
+     * 
+     * @param username The resolved Keycloak username
+     * @param token The original token (used as password)
+     * @return true if authentication succeeds
+     */
     private Boolean tryAuthenticateWithUsername(String username, String token) {
         try {
             if (simvaUserClient.authenticate(username, token)) {
@@ -602,6 +790,12 @@ public class SimvaKeycloakCheck {
         return false;
     }
 
+    /**
+     * Extracts the group ID from a group object based on API version.
+     * 
+     * @param group The group map from SIMVA API
+     * @return The group ID, or null if not found
+     */
     private String getGroupID(Map<String, Object> group) {
         // Try SQL version field first, then NoSQL version
         if(this.isSQLVersion) {
