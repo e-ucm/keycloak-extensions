@@ -15,4 +15,5 @@ public interface Messages {
     String USER_NOT_PARTICIPANT = "error-user-not-participant";
     String NO_SCHEDULER_INFO = "error-no-scheduler-info";
     String TOKEN_USER_MUST_USE_TOKEN_AUTHENTIFICATION = "error-token-user-must-use-token-authentication";
+    String SESSION_NOT_ACTIVE = "error-session-not-active";
 }

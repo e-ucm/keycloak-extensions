@@ -2,7 +2,7 @@ package es.eucm.utils;
 
 import es.eucm.utils.SimvaApiClient;
 import es.eucm.utils.KeycloakOAuth2Client;
-import java.util.AbstractMap.SimpleEntry;
+    import java.util.AbstractMap.SimpleEntry;
 
 import java.io.IOException;
 import java.util.List;
@@ -16,12 +16,17 @@ public class SimvaKeycloakCheck {
     private static SimvaApiClient simvaAdminClient = new SimvaApiClient();
     private static SimvaApiClient simvaUserClient = new SimvaApiClient();
     private static KeycloakOAuth2Client keycloakClient = new KeycloakOAuth2Client();
-    private boolean isSQLVersion;
+    private Boolean isSQLVersion = null;
     
     public SimvaKeycloakCheck() {
         try {
             // Use ensureAdminAuthenticated to avoid re-authenticating if token is still valid
             simvaAdminClient.ensureAdminAuthenticated();
+            // Always determine SQL version first
+            if (this.isSQLVersion == null) {
+                this.isSQLVersion = simvaAdminClient.checkSQLVersion();
+                logger.info("Determined SIMVA API version: " + (this.isSQLVersion ? "SQL" : "NoSQL"));
+            }
         } catch(IOException e) {
             logger.info(e.toString());
         }
@@ -101,9 +106,13 @@ public class SimvaKeycloakCheck {
             if (loginHintParts.length == 1) {
                 // Only study provided, check if user has access to study
                 logger.info("Checking study access for authenticated user: " + username);
-                Boolean hasAccess = checkUserStudyAccess(study);
+                SimpleEntry<Boolean, String> accessResult = checkUserStudyAccessWithError(study);
                 simvaUserClient.disconnect();
-                return new SimpleEntry<>(hasAccess, hasAccess ? username : Messages.USER_NOT_PARTICIPANT);
+                if (accessResult.getKey()) {
+                    return new SimpleEntry<>(true, username);
+                } else {
+                    return new SimpleEntry<>(false, accessResult.getValue());
+                }
             } else if (loginHintParts.length == 3) {
                 // Study, session, activity provided, check scheduler
                 String session = loginHintParts[1];
@@ -147,17 +156,38 @@ public class SimvaKeycloakCheck {
 
     /**
      * Check if user has access to the study's schedule.
+     * @return SimpleEntry with (success, errorMessage) - errorMessage is null on success
      */
-    private Boolean checkUserStudyAccess(String study) throws IOException {
+    private SimpleEntry<Boolean, String> checkUserStudyAccessWithError(String study) throws IOException {
         Map<String, Object> schedulerInfo;
         if (this.isSQLVersion) {
             schedulerInfo = simvaUserClient.sendGetRequest("/simlets/" + study + "/schedule");
         } else {
             schedulerInfo = simvaUserClient.sendGetRequest("/studies/" + study + "/schedule");
         }
-        return schedulerInfo != null 
-            && (schedulerInfo.containsKey("study") || schedulerInfo.containsKey("simlet")) 
-            && schedulerInfo.containsKey("next");
+        
+        if (schedulerInfo != null) {
+            // Check for ValidationError (e.g., session not active yet)
+            Object typeObj = schedulerInfo.get("type");
+            Object messageObj = schedulerInfo.get("message");
+            if (typeObj != null && "ValidationError".equals(typeObj.toString())) {
+                String message = messageObj != null ? messageObj.toString() : "";
+                if (message.contains("active")) {
+                    logger.info("Session is not active yet: " + message);
+                    return new SimpleEntry<>(false, Messages.SESSION_NOT_ACTIVE);
+                }
+                logger.info("Validation error: " + message);
+                return new SimpleEntry<>(false, Messages.NO_SCHEDULER_INFO);
+            }
+            
+            // Check for valid scheduler response
+            if ((schedulerInfo.containsKey("study") || schedulerInfo.containsKey("simlet")) 
+                    && schedulerInfo.containsKey("next")) {
+                return new SimpleEntry<>(true, null);
+            }
+        }
+        
+        return new SimpleEntry<>(false, Messages.USER_NOT_PARTICIPANT);
     }
 
     /**
@@ -248,7 +278,6 @@ public class SimvaKeycloakCheck {
      * @return SimpleEntry with (success, errorMessage) - errorMessage is null on success
      */
     public SimpleEntry<Boolean, String> checkStudySchedulerWithError(String study, String session, String activity) throws IOException {
-        
         Map<String, Object> schedulerInfo;
         if(this.isSQLVersion) {
             schedulerInfo = simvaUserClient.sendGetRequest("/simlets/" + study + "/schedule");
@@ -368,7 +397,6 @@ public class SimvaKeycloakCheck {
             if (study == null) {
                 authResult = new SimpleEntry<>(false, null);
             } else{
-                this.isSQLVersion = simvaAdminClient.checkSQLVersion();
                 if (this.isSQLVersion) {
                     authResult = handleSQLVersionTokenCheck(study, token);
                 } else {
@@ -377,14 +405,14 @@ public class SimvaKeycloakCheck {
             }
         }
         if(Boolean.TRUE.equals(authResult.getKey())) {
-            Boolean schedulerValid = this.checkUserStudyAccess(study);
+            SimpleEntry<Boolean, String> schedulerResult = this.checkUserStudyAccessWithError(study);
             this.simvaUserClient.disconnect();
-            if(schedulerValid) {
+            if(schedulerResult.getKey()) {
                 logger.info("Validated token in study");
                 return new SimpleEntry<>(true, authResult.getValue());
             } else {
-                logger.info("User associated with token is not a participant in the study");
-                return new SimpleEntry<>(false, Messages.USER_NOT_PARTICIPANT);
+                logger.info("User study access check failed: " + schedulerResult.getValue());
+                return new SimpleEntry<>(false, schedulerResult.getValue());
             }
         } else {
             logger.info("Invalidated token in study");
@@ -405,7 +433,6 @@ public class SimvaKeycloakCheck {
             if(study == null) {
                 authResult = new SimpleEntry<>(false, null);
             } else{
-                this.isSQLVersion = simvaAdminClient.checkSQLVersion();
                 if (this.isSQLVersion) {
                     authResult = handleSQLVersionTokenCheck(study, token);
                 } else {
