@@ -12,6 +12,7 @@ import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.slf4j.Logger;
@@ -34,8 +35,63 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
     private SimvaKeycloakCheck simvaKeycloakCheck;
 
     public CustomAuthenticator(KeycloakSession session) {
-        this.session = session;
+        logger.info("CustomAuthenticator constructor called");
         simvaKeycloakCheck= new SimvaKeycloakCheck();
+        this.session = session;
+        if(this.session != null) {
+            logger.info("Session already set in constructor: " + this.session);
+            String loginHint = session.getContext().getAuthenticationSession().getClientNote(OIDCLoginProtocol.LOGIN_HINT_PARAM);
+            logger.info("Login hint in constructor: " + loginHint);
+            
+            // Check for existing SSO session using identity cookie
+            RealmModel realm = session.getContext().getRealm();
+            AuthenticationManager.AuthResult authResult = AuthenticationManager.authenticateIdentityCookie(session, realm, true);
+            
+            String authenticatedUsername = null;
+            if (authResult != null && authResult.getUser() != null) {
+                authenticatedUsername = authResult.getUser().getUsername();
+                logger.info("Found existing SSO session for user: " + authenticatedUsername);
+            } else {
+                logger.info("No existing SSO session found");
+            }
+            
+            if(authenticatedUsername != null) {
+                try {
+                    SimpleEntry<Boolean, String> checkResult;
+                    if (loginHint != null && !loginHint.isEmpty()) {
+                        logger.info("Checking login_hint against current already authenticated user: " + authenticatedUsername);
+                        checkResult = simvaKeycloakCheck.checkTokenWithLoginHint(authenticatedUsername, loginHint, true);
+                    } else {
+                        logger.info("No login_hint provided, checking user check for already authenticated user");
+                        checkResult = simvaKeycloakCheck.checkUserAccessNotATokenForAuthenticatedUser(authenticatedUsername);
+                    }
+                    if (!checkResult.getKey()) {
+                        String errorReason = checkResult.getValue() != null ? checkResult.getValue() : "unknown";
+                        logger.info("Current user '{}' does not match login_hint '{}', reason: {}, invalidating SSO session", authenticatedUsername, loginHint, errorReason);
+                        // Invalidate the existing session so user has to re-authenticate
+                        if (authResult != null && authResult.getSession() != null) {
+                            session.sessions().removeUserSession(realm, authResult.getSession());
+                        }
+                        session.getContext().getAuthenticationSession().setAuthenticatedUser(null);
+                        session.getContext().getAuthenticationSession().removeAuthNote(USER_SET_BEFORE_USERNAME_PASSWORD_AUTH);
+                    } else {
+                        logger.info("Current user '{}' matches login_hint '{}', keeping user authenticated", authenticatedUsername, loginHint);
+                    }
+                } catch(IOException e) {
+                    logger.info("Error during token check in constructor: " + e.toString());
+                    if (authResult != null && authResult.getSession() != null) {
+                        session.sessions().removeUserSession(realm, authResult.getSession());
+                    }
+                    session.getContext().getAuthenticationSession().setAuthenticatedUser(null);
+                    session.getContext().getAuthenticationSession().removeAuthNote(USER_SET_BEFORE_USERNAME_PASSWORD_AUTH);
+                }
+            } else if (authenticatedUsername == null) {
+                logger.info("No user authenticated in constructor");
+            }
+        } else {
+            logger.info("Session is null in constructor");
+        }
+       
     }
 
     /**
@@ -46,6 +102,8 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
      */
     @Override
     public void authenticate(AuthenticationFlowContext context) {
+        logger.info("CUSTOMER PROVIDER authenticate method called");
+        logger.info("Actual User: " + context.getUser());
         logMap(context.getHttpRequest().getUri().getQueryParameters());
         logMap(context.getHttpRequest().getDecodedFormParameters());
         String simvaUserTokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("simva_user_token");
@@ -78,7 +136,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         }
         if(simvaUserTokenPresent != null && simvaUserTokenPresent.equals("true")) {
             String login_hint = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
-            if(login_hint != "") {
+            if(login_hint != null && !login_hint.isEmpty()) {
                 stringurl.append("&login_hint=").append(login_hint);
             }
             stringurl.append("&simva_user_token=true");
@@ -104,6 +162,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
     }
 
     protected Response challenge(LoginFormsProvider forms, MultivaluedMap<String, String> formData) {
+        logger.info("Creating challenge response with form data: " + formData);
         if (formData.size() > 0) forms.setFormData(formData);
 
         return forms.createLoginUsernamePassword();
@@ -131,29 +190,27 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
 
     @Override
     public void action(AuthenticationFlowContext context) {
-        logger.info("CUSTOMER PROVIDER action");
+        logger.info("CUSTOMER PROVIDER action method called");
+        logger.info("Actual User: " + context.getUser());
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
-        if(validateUserAndPassword(context, formData)) {
-            context.success(); // Proceed if token is valid
-        } else {
-            logMap(context.getHttpRequest().getUri().getQueryParameters());
-            logMap(formData);
-            if (formData.containsKey("cancel")) {
-                context.cancelLogin();
-                return;
-            }
-            String errorMsg;
-            String username = formData.getFirst("username");
-            String password = formData.getFirst("password");
-            String simvaUserTokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("simva_user_token");
-            logger.info("Simva User Token Present : " + simvaUserTokenPresent);
-            String hideLocaleDropdown = context.getHttpRequest().getUri().getQueryParameters().getFirst("hideLocaleDropdown");
-            StringBuilder stringurl = new StringBuilder();
-            stringurl.append("");
-            if(hideLocaleDropdown != null) {
-                stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
-            }
-            if(simvaUserTokenPresent != null && simvaUserTokenPresent.equals("true")) {
+        logMap(context.getHttpRequest().getUri().getQueryParameters());
+        logMap(formData);
+        if (formData.containsKey("cancel")) {
+            context.cancelLogin();
+            return;
+        }
+        String errorMsg;
+        String username = formData.getFirst("username");
+        String password = formData.getFirst("password");
+        String simvaUserTokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("simva_user_token");
+        logger.info("Simva User Token Present : " + simvaUserTokenPresent);
+        String hideLocaleDropdown = context.getHttpRequest().getUri().getQueryParameters().getFirst("hideLocaleDropdown");
+        StringBuilder stringurl = new StringBuilder();
+        stringurl.append("");
+        if(hideLocaleDropdown != null) {
+            stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
+        }
+        if(simvaUserTokenPresent != null && simvaUserTokenPresent.equals("true")) {
                 if(username.isEmpty()) {
                     errorMsg=Messages.EMPTY_VALUE;
                 } else {
@@ -164,10 +221,10 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                 logger.info("Study: " + login_hint);
                 SimpleEntry<Boolean, String> validate;
                 try {
-                    validate = this.simvaKeycloakCheck.checkTokenWithLoginHint(username, login_hint);
+                    validate = this.simvaKeycloakCheck.checkTokenWithLoginHint(username, login_hint, false);
                 } catch(IOException e) {
                     logger.info(e.toString());
-                    validate = new SimpleEntry<>(false, null);
+                    validate = new SimpleEntry<>(false, Messages.INVALID_VALUE);
                 }
                 if(validate.getKey()) {
                     String updatedUsername = validate.getValue();
@@ -184,7 +241,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                             .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
                             .setAttribute("simvaUserToken", "true")
                             .setAttribute("stringurl", stringurl.toString())
-                            .createForm("login.ftl");
+                            .createLoginUsernamePassword();
                         context.challenge(challengeResponse);
                         return;
                     }
@@ -192,18 +249,23 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     context.success(); // Proceed if token is valid
                     return;
                 } else {
-                    if(login_hint != "") {
+                    // Use specific error message from validation if available
+                    String specificError = validate.getValue();
+                    if (specificError != null && !specificError.isEmpty()) {
+                        errorMsg = specificError;
+                    }
+                    if(login_hint != null && !login_hint.isEmpty()) {
                         stringurl.append("&login_hint=").append(login_hint);
                     }
                     stringurl.append("&simva_user_token=true");
-                    logger.info(stringurl.toString());
+                    logger.info("Validation failed with error: " + errorMsg);
                     // Create a form error response
                     Response challengeResponse = context.form()
                         .setError(errorMsg)
                         .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
                         .setAttribute("simvaUserToken", "true")
                         .setAttribute("stringurl", stringurl.toString())
-                        .createForm("login.ftl");
+                        .createLoginUsernamePassword();
                     context.challenge(challengeResponse);
                 }
             } else {
@@ -215,14 +277,14 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     errorMsg=Messages.INVALID_USERNAME_OR_PASSWORD;
                 }
                 logger.info("AUTHENTICATE username password custom provider: " + username);
-                Boolean valid;
+                SimpleEntry<Boolean, String> validateResult;
                 try {
-                    valid = this.simvaKeycloakCheck.checkUsernamePassword(username, password);
+                    validateResult = this.simvaKeycloakCheck.checkUsernamePassword(username, password);
                 } catch(IOException e) {
                     logger.info(e.toString());
-                    valid=false;
+                    validateResult = new SimpleEntry<>(false, Messages.INVALID_USERNAME_OR_PASSWORD);
                 }
-                if(valid) {
+                if(validateResult.getKey()) {
                     // Set the username in the authentication session
                     UserModel user = context.getSession().users().getUserByUsername(context.getRealm(), username);
                     if (user == null) {
@@ -230,8 +292,8 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                         Response challengeResponse = context.form()
                             .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
                             .setAttribute("stringurl", stringurl.toString())
-                            .setError(Messages.INVALID_USERNAME_OR_PASSWORD)
-                            .createForm("login.ftl");
+                            .setError(errorMsg)
+                            .createLoginUsernamePassword();
                         context.challenge(challengeResponse);
                         return;
                     }
@@ -239,35 +301,43 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     context.success(); // Proceed if token is valid
                     return;
                 } else {
+                    // Use specific error message from validation if available
+                    String specificError = validateResult.getValue();
+                    if (specificError != null && !specificError.isEmpty()) {
+                        errorMsg = specificError;
+                    }
                     // Create a form error response
                     Response challengeResponse = context.form()
                         .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
                         .setAttribute("stringurl", stringurl.toString())
                         .setError(errorMsg)
-                        .createForm("login.ftl");
+                        .createLoginUsernamePassword();
                     context.challenge(challengeResponse);
                 }
             }
-        }
     }
     
     @Override
     public boolean requiresUser() {
+        logger.info("CUSTOMER PROVIDER requiresUser method called");
         return false;
     }
 
     @Override
     public boolean configuredFor(KeycloakSession session, RealmModel realm, UserModel user) {
+        logger.info("CUSTOMER PROVIDER configuredFor method called");
         return true;
     }
 
     @Override
     public void setRequiredActions(KeycloakSession session, RealmModel realm, UserModel user) {
+        logger.info("CUSTOMER PROVIDER setRequiredActions method called");
         // Set the required actions for the user after authentication
     }
 
     @Override
     public void close() {
+        logger.info("CUSTOMER PROVIDER close method called");
         // Closes any open resources
     }
 }

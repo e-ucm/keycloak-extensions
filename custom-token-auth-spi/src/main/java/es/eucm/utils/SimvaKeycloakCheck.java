@@ -17,17 +17,33 @@ public class SimvaKeycloakCheck {
     private static SimvaApiClient simvaUserClient = new SimvaApiClient();
     private static KeycloakOAuth2Client keycloakClient = new KeycloakOAuth2Client();
     private boolean isSQLVersion;
+    
     public SimvaKeycloakCheck() {
         try {
-            simvaAdminClient.authenticate();
+            // Use ensureAdminAuthenticated to avoid re-authenticating if token is still valid
+            simvaAdminClient.ensureAdminAuthenticated();
         } catch(IOException e) {
             logger.info(e.toString());
         }
     }
 
-    public SimpleEntry<Boolean, String> checkTokenWithLoginHint(String username, String login_hint) throws IOException {
+    /**
+     * Check token with login hint. If user is already authenticated in Keycloak,
+     * verify they have access to the specific scheduler based on login_hint.
+     * 
+     * @param username The username (token or authenticated user's username)
+     * @param login_hint The login hint containing study[:session:activity]
+     * @param isAuthenticated Whether the user is already authenticated in Keycloak
+     * @return SimpleEntry with (success, username)
+     */
+    public SimpleEntry<Boolean, String> checkTokenWithLoginHint(String username, String login_hint, boolean isAuthenticated) throws IOException {
         if (login_hint == null || login_hint.isEmpty()) {
             logger.info("Login hint is empty");
+            // If user is authenticated but no login_hint, allow access
+            if (isAuthenticated && username != null && !username.isEmpty()) {
+                logger.info("User already authenticated, no login_hint required");
+                return new SimpleEntry<>(true, username);
+            }
             return new SimpleEntry<>(false, null);
         }
 
@@ -35,36 +51,203 @@ public class SimvaKeycloakCheck {
         logger.info("Login hint parts: " + parts.length + ", values: " + String.join(", ", parts));
         SimpleEntry<Boolean, String> validate;
 
-        switch(parts.length) {
-            case 1:
-                logger.info("Login hint: " + login_hint);
-                validate = this.checkTokenInStudy(login_hint, username);
-                break;
-            case 3:
-                logger.info("Login hint has three parts, using first part as study: " + login_hint);
-                validate = this.checkTokenInStudyAndActivity(parts[0], parts[1], parts[2], username);
-                break;
-            default:
-                logger.info("Login hint has more than one part, using first part as study: " + login_hint);
-                validate = new SimpleEntry<>(false, null);
-                break;
+        // If user is already authenticated in Keycloak, check scheduler access directly
+        if (isAuthenticated && username != null && !username.isEmpty()) {
+            logger.info("User already authenticated in Keycloak, checking scheduler access for: " + username);
+            validate = checkAuthenticatedUserSchedulerAccess(username, parts);
+        } else {
+            // User not authenticated, use token-based authentication
+            switch(parts.length) {
+                case 1:
+                    logger.info("Login hint: " + login_hint);
+                    validate = this.checkTokenInStudy(login_hint, username);
+                    break;
+                case 3:
+                    logger.info("Login hint has three parts, using first part as study: " + login_hint);
+                    validate = this.checkTokenInStudyAndActivity(parts[0], parts[1], parts[2], username);
+                    break;
+                default:
+                    logger.info("Login hint has more than one part, not recognized: " + login_hint);
+                    validate = new SimpleEntry<>(false, null);
+                    break;
+            }
         }
 
         return validate;
     }
 
-    public Boolean checkUsernamePassword(String username, String password) throws IOException {
+    /**
+     * Check scheduler access for an already authenticated user.
+     * 
+     * @param username The authenticated user's username
+     * @param loginHintParts The parsed login_hint parts [study] or [study, session, activity]
+     * @return SimpleEntry with (success, username)
+     */
+    private SimpleEntry<Boolean, String> checkAuthenticatedUserSchedulerAccess(String username, String[] loginHintParts) throws IOException {
+        // Authenticate with user's credentials to access SIMVA API
+        // For authenticated users, try to authenticate using their username
+        if (!simvaUserClient.authenticateAsUser(username)) {
+            logger.info("Failed to authenticate as user: " + username + ", falling back to admin client");
+            // Try using admin client to verify user's scheduler access
+            return new SimpleEntry<>(false, Messages.INVALID_TOKEN);
+            //checkSchedulerAccessViaAdmin(username, loginHintParts);
+        }
+
+        try {
+            this.isSQLVersion = simvaAdminClient.checkSQLVersion();
+            
+            String study = loginHintParts[0];
+            
+            if (loginHintParts.length == 1) {
+                // Only study provided, check if user has access to study
+                logger.info("Checking study access for authenticated user: " + username);
+                Boolean hasAccess = checkUserStudyAccess(study);
+                simvaUserClient.disconnect();
+                return new SimpleEntry<>(hasAccess, hasAccess ? username : Messages.USER_NOT_PARTICIPANT);
+            } else if (loginHintParts.length == 3) {
+                // Study, session, activity provided, check scheduler
+                String session = loginHintParts[1];
+                String activity = loginHintParts[2];
+                logger.info("Checking scheduler access for authenticated user: " + username);
+                SimpleEntry<Boolean, String> schedulerResult = checkStudySchedulerWithError(study, session, activity);
+                simvaUserClient.disconnect();
+                if (schedulerResult.getKey()) {
+                    logger.info("Authenticated user has valid scheduler access");
+                    return new SimpleEntry<>(true, username);
+                } else {
+                    logger.info("Authenticated user does not have valid scheduler access: " + schedulerResult.getValue());
+                    return new SimpleEntry<>(false, schedulerResult.getValue());
+                }
+            }
+        } catch (IOException e) {
+            logger.info("Error checking scheduler access: " + e.toString());
+            simvaUserClient.disconnect();
+        }
+        
+        return new SimpleEntry<>(false, null);
+    }
+
+    /**
+     * Check scheduler access using admin client when user client auth fails.
+     */
+    private SimpleEntry<Boolean, String> checkSchedulerAccessViaAdmin(String username, String[] loginHintParts) throws IOException {
+        this.isSQLVersion = simvaAdminClient.checkSQLVersion();
+        String study = loginHintParts[0];
+        
+        // Check if user is a participant in the study
+        Boolean isParticipant = checkUserIsParticipantInStudy(username, study);
+        if (!isParticipant) {
+            logger.info("User is not a participant in study: " + study);
+            return new SimpleEntry<>(false, null);
+        }
+        
+        logger.info("User is a participant in study, granting access");
+        return new SimpleEntry<>(true, username);
+    }
+
+    /**
+     * Check if user has access to the study's schedule.
+     */
+    private Boolean checkUserStudyAccess(String study) throws IOException {
+        Map<String, Object> schedulerInfo;
+        if (this.isSQLVersion) {
+            schedulerInfo = simvaUserClient.sendGetRequest("/simlets/" + study + "/schedule");
+        } else {
+            schedulerInfo = simvaUserClient.sendGetRequest("/studies/" + study + "/schedule");
+        }
+        return schedulerInfo != null 
+            && (schedulerInfo.containsKey("study") || schedulerInfo.containsKey("simlet")) 
+            && schedulerInfo.containsKey("next");
+    }
+
+    /**
+     * Check if a user is a participant in the given study.
+     */
+    private Boolean checkUserIsParticipantInStudy(String username, String study) {
+        try {
+            String requestUrl;
+            if (this.isSQLVersion) {
+                requestUrl = "/simlets/" + study + "/groups";
+            } else {
+                requestUrl = "/studies/" + study + "/groups";
+            }
+            
+            Map<String, Object> groups = simvaAdminClient.sendGetRequest(requestUrl);
+            for (Object groupObj : groups.values()) {
+                if (!(groupObj instanceof Map)) {
+                    continue;
+                }
+                
+                Map<String, Object> group = (Map<String, Object>) groupObj;
+                String groupId = getGroupID(group);
+                
+                String participantsUrl;
+                if (this.isSQLVersion) {
+                    participantsUrl = "/simlets/" + study + "/groups/" + groupId + "/participants";
+                } else {
+                    participantsUrl = "/studies/" + study + "/groups/" + groupId + "/participants";
+                }
+                
+                Map<String, Object> participants = simvaAdminClient.sendGetRequest(participantsUrl);
+                for (Object participantObj : participants.values()) {
+                    if (!(participantObj instanceof Map)) {
+                        continue;
+                    }
+                    
+                    Map<String, Object> participant = (Map<String, Object>) participantObj;
+                    String participantUsername = participant.get("username") != null ? 
+                        participant.get("username").toString() : null;
+                    
+                    if (username.equals(participantUsername)) {
+                        logger.info("Found user " + username + " as participant in group " + groupId);
+                        return true;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            logger.info("Error checking participant status: " + e.toString());
+        }
+        return false;
+    }
+
+    public SimpleEntry<Boolean, String> checkUsernamePassword(String username, String password) throws IOException {
         if(simvaUserClient.authenticate(username, password)) {
             logger.info("Validated user credentials");
-            simvaUserClient.disconnect();
-            return true;
+            return checkUserAccessNotATokenForAuthenticatedUser(username);
         } else {
             logger.info("Invalidated user credentials");
-            return false;
+            return new SimpleEntry<>(false, Messages.INVALID_USERNAME_OR_PASSWORD);
         }
     }
 
-    public Boolean checkStudyScheduler(String study, String session, String activity) throws IOException {
+    public SimpleEntry<Boolean, String> checkUserAccessNotATokenForAuthenticatedUser(String username) throws IOException {
+        // Check if user is a token user, if so invalidate credentials since they must use token authentication
+        // Use simvaUserClient (already authenticated as this user) to get /users/me
+        Map<String, Object> userInfo = simvaUserClient.sendGetRequest("/users/me");
+        logger.info("User info response for /users/me: " + userInfo);
+        if(userInfo != null && userInfo.get("isToken") != null) {
+            Object isTokenValue = userInfo.get("isToken");
+            boolean isToken = Boolean.TRUE.equals(isTokenValue)
+                || (isTokenValue instanceof String && Boolean.parseBoolean((String) isTokenValue));
+            if (isToken) {
+                logger.info("Token users cannot access if not via token authentication, invalidating credentials");
+                simvaUserClient.disconnect();
+                return new SimpleEntry<>(false, Messages.TOKEN_USER_MUST_USE_TOKEN_AUTHENTIFICATION);
+            }
+        }
+        String retrievedUsername = userInfo != null && userInfo.get("username") != null 
+            ? userInfo.get("username").toString() 
+            : username;
+        logger.info("Retrieved user info for username: " + retrievedUsername);
+        simvaUserClient.disconnect();
+        return new SimpleEntry<>(true, retrievedUsername);
+    }
+
+    /**
+     * Check study scheduler and return error message on failure.
+     * @return SimpleEntry with (success, errorMessage) - errorMessage is null on success
+     */
+    public SimpleEntry<Boolean, String> checkStudySchedulerWithError(String study, String session, String activity) throws IOException {
         
         Map<String, Object> schedulerInfo;
         if(this.isSQLVersion) {
@@ -92,7 +275,7 @@ public class SimvaKeycloakCheck {
                     && schedulerSession.equals(session) && schedulerStudy.equals(study)) {
                 if(next != null && next.equals(activity)) {
                     logger.info("Validated activity scheduler");
-                    return true;
+                    return new SimpleEntry<>(true, null);
                 } else {
                     if(this.isSQLVersion && schedulerInfo.containsKey("activities")) {
                         Map<String, Object> scheduledActivity = getScheduledActivity(schedulerInfo.get("activities"), next);
@@ -100,23 +283,27 @@ public class SimvaKeycloakCheck {
                         Map<String, Object> completion = simvaUserClient.sendGetRequest("/activities/" + activity + "/completion");
                         logger.info("Completion: " + completion);
                         Boolean isCompleted = getCompletionValue(completion);
-                        if(Boolean.TRUE.equals(isCompleted)
-                                && scheduledActivity != null
-                                && Boolean.TRUE.equals(scheduledActivity.get("activity_can_be_restarted"))) {
-                            logger.info("Validated activity scheduler based on activities list");
-                            return true;
+                        if(Boolean.TRUE.equals(isCompleted)) {
+                            if(scheduledActivity != null
+                                    && Boolean.TRUE.equals(scheduledActivity.get("activity_can_be_restarted"))) {
+                                logger.info("Validated activity scheduler based on activities list");
+                                return new SimpleEntry<>(true, null);
+                            } else {
+                                logger.info("Activity cannot be restarted");
+                                return new SimpleEntry<>(false, Messages.ACTIVITY_CANNOT_BE_RESTARTED);
+                            }
                         }
                     }
-                    logger.info("Invalidated activity scheduler");
-                    return false;
+                    logger.info("Not the current activity");
+                    return new SimpleEntry<>(false, Messages.NOT_CURRENT_ACTIVITY);
                 }
             } else {
                 logger.info("Invalidated study scheduler");
-                return false;
+                return new SimpleEntry<>(false, Messages.INVALID_SCHEDULER);
             }
         } else {
             logger.info("No scheduler info found for study: " + study);
-            return false;
+            return new SimpleEntry<>(false, Messages.NO_SCHEDULER_INFO);
         }
     }
 
@@ -190,12 +377,18 @@ public class SimvaKeycloakCheck {
             }
         }
         if(Boolean.TRUE.equals(authResult.getKey())) {
+            Boolean schedulerValid = this.checkUserStudyAccess(study);
             this.simvaUserClient.disconnect();
-            logger.info("Validated token in study");
-            return authResult;
+            if(schedulerValid) {
+                logger.info("Validated token in study");
+                return new SimpleEntry<>(true, authResult.getValue());
+            } else {
+                logger.info("User associated with token is not a participant in the study");
+                return new SimpleEntry<>(false, Messages.USER_NOT_PARTICIPANT);
+            }
         } else {
             logger.info("Invalidated token in study");
-            return new SimpleEntry<>(false, null);
+            return new SimpleEntry<>(false, Messages.INVALID_TOKEN);
         }
     }
 
@@ -222,18 +415,18 @@ public class SimvaKeycloakCheck {
         }
         if(Boolean.TRUE.equals(authResult.getKey())) {
             logger.info("Validated token in study, now checking scheduler");
-            Boolean schedulerValid = checkStudyScheduler(study, session, activity);
+            SimpleEntry<Boolean, String> schedulerResult = checkStudySchedulerWithError(study, session, activity);
             simvaUserClient.disconnect();
-            if(schedulerValid) {
+            if(schedulerResult.getKey()) {
                 logger.info("Validated study scheduler");
                 return new SimpleEntry<>(true, authResult.getValue());
             } else {
-                logger.info("Invalidated study scheduler");
-                return new SimpleEntry<>(false, null);
+                logger.info("Invalidated study scheduler: " + schedulerResult.getValue());
+                return new SimpleEntry<>(false, schedulerResult.getValue());
             }
         } else {
             logger.info("Invalidated token in study");
-            return new SimpleEntry<>(false, null);
+            return new SimpleEntry<>(false, Messages.INVALID_TOKEN);
         }
     }
 

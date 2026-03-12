@@ -41,6 +41,7 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
 
     @Override
     public void authenticate(AuthenticationFlowContext context) {
+        logger.info("ValidateTokenUsernameAuthenticator authenticate method called");
         this.simvaKeycloakCheck = new SimvaKeycloakCheck();
         MultivaluedMap<String, String> inputData = context.getHttpRequest().getDecodedFormParameters();
         logMap(inputData);
@@ -49,7 +50,7 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
         if (login_hint != null) {
             SimpleEntry<Boolean, String> validate;
             try {
-                validate = this.simvaKeycloakCheck.checkTokenWithLoginHint(username, login_hint);
+                validate = this.simvaKeycloakCheck.checkTokenWithLoginHint(username, login_hint, false);
             } catch(IOException e) {
                 logger.info(e.toString());
                 validate = new SimpleEntry<>(false, null);
@@ -59,17 +60,17 @@ public class ValidateTokenUsernameAuthenticator extends AbstractDirectGrantAuthe
             }
         } else {
             String password = inputData.getFirst("password");
-            Boolean valid;
+            SimpleEntry<Boolean, String> validResult;
             try {
-                valid = this.simvaKeycloakCheck.checkUsernamePassword(username, password);
+                validResult = this.simvaKeycloakCheck.checkUsernamePassword(username, password);
             } catch(IOException e) {
                 logger.info(e.toString());
-                valid=false;
+                validResult = new SimpleEntry<>(false, null);
             }
-            if(valid) {
+            if(validResult.getKey()) {
                 logger.info("Username valid");
             } else {
-                logger.info("Username not valid");
+                logger.info("Username not valid: " + validResult.getValue());
             }
         }
         

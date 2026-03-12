@@ -27,6 +27,7 @@ public class SimvaApiClient {
     private String password;
     private String bearerToken;
     private OkHttpClient client;
+    private boolean isAdminAuth = false; // Track if this is an admin authentication
 
     public SimvaApiClient() {
         try {
@@ -38,11 +39,71 @@ public class SimvaApiClient {
     }
 
     public boolean isAuthentificated() {
-        return this.bearerToken != null;
+        return this.bearerToken != null && !keycloakClient.isTokenExpired();
     }
 
-    public boolean authenticate() throws IOException{
-        return authenticate(apiConfig.getAdminUsername(), apiConfig.getAdminPassword());
+    /**
+     * Check if the current token is expired or about to expire.
+     * @return true if token needs refresh
+     */
+    public boolean isTokenExpired() {
+        return keycloakClient.isTokenExpired();
+    }
+
+    /**
+     * Check if the refresh token can be used to get a new access token.
+     * @return true if refresh token is still valid
+     */
+    public boolean canUseRefreshToken() {
+        return keycloakClient.canUseRefreshToken();
+    }
+
+    /**
+     * Try to refresh the access token using the refresh token.
+     * @return true if refresh was successful
+     */
+    public boolean refreshToken() throws IOException {
+        boolean refreshed = keycloakClient.refreshAccessToken();
+        if (refreshed) {
+            this.bearerToken = "Bearer " + keycloakClient.getAccessToken();
+            logger.info("Bearer token refreshed successfully");
+        }
+        return refreshed;
+    }
+
+    /**
+     * Ensure admin is authenticated, using refresh token if available,
+     * otherwise re-authenticating with credentials.
+     * @return true if admin is authenticated (existing, refreshed, or new)
+     */
+    public boolean ensureAdminAuthenticated() throws IOException {
+        // Token is still valid, no action needed
+        if (this.isAdminAuth && this.isAuthentificated()) {
+            logger.info("Admin already authenticated with valid token");
+            return true;
+        }
+        
+        // Token expired, try to refresh using refresh token first
+        if (this.isAdminAuth && canUseRefreshToken()) {
+            logger.info("Admin token expired, attempting to refresh using refresh token");
+            if (refreshToken()) {
+                logger.info("Admin token refreshed successfully");
+                return true;
+            }
+            logger.info("Failed to refresh token, falling back to credentials");
+        }
+        
+        // No valid token or refresh failed, authenticate with credentials
+        logger.info("Authenticating admin with credentials");
+        return authenticate();
+    }
+
+    public boolean authenticate() throws IOException {
+        boolean result = authenticate(apiConfig.getAdminUsername(), apiConfig.getAdminPassword());
+        if (result) {
+            this.isAdminAuth = true;
+        }
+        return result;
     }
 
     public boolean authenticate(String username, String password) throws IOException {
@@ -62,11 +123,51 @@ public class SimvaApiClient {
         }
     }
 
+    /**
+     * Authenticate as an already verified user using admin impersonation.
+     * Used when user is already authenticated in Keycloak browser session.
+     * Falls back to admin authentication if impersonation fails.
+     * Only re-authenticates if token is expired.
+     * 
+     * @param username The username of the already authenticated user
+     * @return true if authentication succeeded
+     */
+    public boolean authenticateAsUser(String username) throws IOException {
+        // First ensure admin is authenticated (only re-auth if token expired)
+        boolean adminAuth = ensureAdminAuthenticated();
+        if (!adminAuth) {
+            logger.info("Failed to authenticate as admin for user impersonation");
+            return false;
+        }
+        
+        // Store the username we're acting on behalf of
+        this.username = username;
+        logger.info("Authenticated as admin on behalf of user: " + username);
+        return true;
+    }
+
     public boolean disconnect() throws IOException {
+        // Only disconnect if not admin auth (preserve admin session)
+        if (!this.isAdminAuth) {
+            this.keycloakClient.disconnect();
+            this.bearerToken = null;
+            logger.info("Disconnected from SIMVA API");
+        }
+        this.username = null;
+        this.password = null;
+        return true;
+    }
+
+    /**
+     * Force disconnect, including admin session.
+     * Use this when you want to completely clear the session.
+     */
+    public boolean forceDisconnect() throws IOException {
         this.keycloakClient.disconnect();
         this.username = null;
         this.password = null;
         this.bearerToken = null;
+        this.isAdminAuth = false;
         return true;
     }
 
