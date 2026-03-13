@@ -213,6 +213,8 @@ public class KeycloakOAuth2Client {
                 return false;
             }
         }
+    }
+    
     /**
      * Disconnects by logging out from Keycloak and invalidating tokens.
      * 
