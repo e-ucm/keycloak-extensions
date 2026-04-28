@@ -73,10 +73,17 @@ tmp_dir=$(mktemp -d)
 ls -lia $tmp_dir
 git clone --depth 1 --branch v${BUILD_VERSION} "https://github.com/e-ucm/keycloak-events.git" ${tmp_dir};
 chmod -R 777 $tmp_dir
-docker run --rm --name maven-project-builder \
-    -v $tmp_dir:/usr/src/mymaven -w /usr/src/mymaven \
-    -v ${m2_cache}:/usr/src/mymaven/.m2 \
-    -u $(id -u ${USER}):$(id -g ${USER}) \
+
+# Git Bash/MSYS rewrites container paths unless conversion is disabled.
+docker_env=()
+if [[ "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]]; then
+  docker_env=(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*")
+fi
+
+env "${docker_env[@]}" docker run --rm --name maven-project-builder \
+  -v "${tmp_dir}:/usr/src/mymaven" -w /usr/src/mymaven \
+  -v "${m2_cache}:/usr/src/mymaven/.m2" \
+  -u "$(id -u ${USER}):$(id -g ${USER})" \
     -e MAVEN_CONFIG=/usr/src/mymaven/.m2 \
     maven:3.9.9-amazoncorretto-23-debian sh -c "apt update && apt install -y git && mvn -Duser.home=/usr/src/mymaven clean package"
 cp ${tmp_dir}/target/keycloak-events-$BUILD_VERSION.jar ./build-keycloak-events-$BUILD_VERSION/io.phasetwo.keycloak.keycloak-events-$BUILD_VERSION.jar

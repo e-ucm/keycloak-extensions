@@ -85,10 +85,17 @@ mvn_cmd="mvn -Duser.home=/maven-config "-Dkeycloak.version=${KEYCLOAK_VERSION}" 
 user_uid=$(id -u ${USER})
 user_gid=$(id -g ${USER})
 
-docker run --rm --name maven-project-builder \
-    -v ${extension}:/usr/src/mymaven \
-    -v ${m2_cache}:/maven-config \
-    -u ${user_uid}:${user_gid} \
+# Git Bash/MSYS rewrites container paths like /usr/src/mymaven into
+# C:/Program Files/Git/... unless conversion is explicitly disabled.
+docker_env=()
+if [[ "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]]; then
+  docker_env=(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*")
+fi
+
+env "${docker_env[@]}" docker run --rm --name maven-project-builder \
+  -v "${extension}:/usr/src/mymaven" \
+  -v "${m2_cache}:/maven-config" \
+  -u "${user_uid}:${user_gid}" \
     -w /usr/src/mymaven \
     -e MAVEN_CONFIG=/maven-config/.m2 \
-    ${MAVEN_BUILDER_IMAGE} ${mvn_cmd}
+  "${MAVEN_BUILDER_IMAGE}" ${mvn_cmd}
