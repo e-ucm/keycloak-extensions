@@ -23,7 +23,7 @@
                                 <input type="hidden" id="id-hidden-input" name="credentialId" <#if auth.selectedCredential?has_content>value="${auth.selectedCredential}"</#if>/>
                                 <@buttons.loginButton />
                                 <#if loginHintProvided>
-                                    <a href="${url.loginAction}${stringurl!""}" class="${properties.kcButtonClass!} ${properties.kcButtonSecondaryClass!} ${properties.kcButtonBlockClass!}" style="margin-top: 8px;">${msg("doLogin")}</a>
+                                    <button type="button" class="${properties.kcButtonClass!} ${properties.kcButtonSecondaryClass!} ${properties.kcButtonBlockClass!}" style="margin-top: 8px;" onclick="window.location.href='${url.loginAction}${stringurl!""}'">${msg("doLogin")}</button>
                                 </#if>
                             </form>
                         </#if>
@@ -65,7 +65,7 @@
                                 <input type="hidden" id="id-hidden-input" name="credentialId" <#if auth.selectedCredential?has_content>value="${auth.selectedCredential}"</#if>/>
                                 <@buttons.loginButton />
                                 <#if loginHintProvided>
-                                    <a href="${url.loginAction}${stringurlToken!""}" class="${properties.kcButtonClass!} ${properties.kcButtonSecondaryClass!} ${properties.kcButtonBlockClass!}" style="margin-top: 8px;">${msg("role_read-token")}</a>
+                                    <button type="button" class="${properties.kcButtonClass!} ${properties.kcButtonSecondaryClass!} ${properties.kcButtonBlockClass!}" style="margin-top: 8px;" onclick="window.location.href='${url.loginAction}${stringurlToken!""}'">${msg("role_read-token")}</button>
                                 </#if>
                             </form>
                         </#if>
