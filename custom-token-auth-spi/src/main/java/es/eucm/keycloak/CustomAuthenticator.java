@@ -198,27 +198,35 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         if(hideLocaleDropdown != null) {
             stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
         }
+        if(loginHint != null) {
+            stringurl.append("&loginHint=").append(loginHint);
+        }
+        boolean hasLoginHint = loginHint != null && !loginHint.isEmpty();
+        String passwordStringurl = stringurl.toString();
+        StringBuilder tokenStringurlBuilder = new StringBuilder(stringurl.toString());
+        tokenStringurlBuilder.append("&simva_user_token=true");
+        if(hasLoginHint) {
+            tokenStringurlBuilder.append("&login_hint=").append(loginHint);
+        }
+        String tokenStringurl = tokenStringurlBuilder.toString();
         if(simvaUserTokenPresent != null && simvaUserTokenPresent.equals("true")) {
-            String login_hint = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
-            if(login_hint != null && !login_hint.isEmpty()) {
-                stringurl.append("&login_hint=").append(login_hint);
-            }
-            stringurl.append("&simva_user_token=true");
-            logger.info(stringurl.toString());
             logger.info("AUTHENTICATE token custom provider");
             Response challengeResponse = challenge(context.form()
                 .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
-                .setAttribute("stringurl", stringurl.toString())
+                .setAttribute("stringurl", passwordStringurl)
+                .setAttribute("stringurlToken", tokenStringurl)
                 .setAttribute("simvaUserToken", "true")
+                .setAttribute("hasLoginHint", hasLoginHint)
                 , formData
             );
             context.challenge(challengeResponse);
         } else {
             logger.info("AUTHENTICATE username/password custom provider");
-            logger.info(stringurl.toString());
             Response challengeResponse = challenge(context.form()
                .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
-               .setAttribute("stringurl", stringurl.toString())
+               .setAttribute("stringurl", passwordStringurl)
+               .setAttribute("stringurlToken", tokenStringurl)
+               .setAttribute("hasLoginHint", hasLoginHint)
              , formData
            );
             context.challenge(challengeResponse);
@@ -305,11 +313,23 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         String simvaUserTokenPresent = context.getHttpRequest().getUri().getQueryParameters().getFirst("simva_user_token");
         logger.info("Simva User Token Present : " + simvaUserTokenPresent);
         String hideLocaleDropdown = context.getHttpRequest().getUri().getQueryParameters().getFirst("hideLocaleDropdown");
+        String login_hint = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
+        boolean hasLoginHint = login_hint != null && !login_hint.isEmpty();
         StringBuilder stringurl = new StringBuilder();
         stringurl.append("");
         if(hideLocaleDropdown != null) {
             stringurl.append("&hideLocaleDropdown=").append(hideLocaleDropdown);
         }
+        if(login_hint != null) {
+            stringurl.append("&loginHint=").append(login_hint);
+        }
+        String passwordStringurl = stringurl.toString();
+        StringBuilder tokenStringurlBuilder = new StringBuilder(stringurl.toString());
+        tokenStringurlBuilder.append("&simva_user_token=true");
+        if(hasLoginHint) {
+            tokenStringurlBuilder.append("&login_hint=").append(login_hint);
+        }
+        String tokenStringurl = tokenStringurlBuilder.toString();
         if(simvaUserTokenPresent != null && simvaUserTokenPresent.equals("true")) {
                 if(username.isEmpty()) {
                     errorMsg=Messages.EMPTY_VALUE;
@@ -317,7 +337,6 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     errorMsg=Messages.INVALID_VALUE;
                 }
                 logger.info("AUTHENTICATE token custom provider: " + username);
-                String login_hint = context.getHttpRequest().getUri().getQueryParameters().getFirst("login_hint");
                 logger.info("Study: " + login_hint);
                 SimpleEntry<Boolean, String> validate;
                 try {
@@ -332,15 +351,13 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     UserModel user = context.getSession().users().getUserByUsername(context.getRealm(), updatedUsername);
                     if (user == null) {
                         logger.info("User not found in Keycloak: " + updatedUsername);
-                        if(login_hint != null && !login_hint.isEmpty()) {
-                            stringurl.append("&login_hint=").append(login_hint);
-                        }
-                        stringurl.append("&simva_user_token=true");
                         Response challengeResponse = context.form()
                             .setError(Messages.INVALID_VALUE)
                             .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
+                            .setAttribute("stringurl", passwordStringurl)
+                            .setAttribute("stringurlToken", tokenStringurl)
                             .setAttribute("simvaUserToken", "true")
-                            .setAttribute("stringurl", stringurl.toString())
+                            .setAttribute("hasLoginHint", hasLoginHint)
                             .createLoginUsernamePassword();
                         context.challenge(challengeResponse);
                         return;
@@ -354,17 +371,15 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     if (specificError != null && !specificError.isEmpty()) {
                         errorMsg = specificError;
                     }
-                    if(login_hint != null && !login_hint.isEmpty()) {
-                        stringurl.append("&login_hint=").append(login_hint);
-                    }
-                    stringurl.append("&simva_user_token=true");
                     logger.info("Validation failed with error: " + errorMsg);
                     // Create a form error response
                     Response challengeResponse = context.form()
                         .setError(errorMsg)
                         .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
+                        .setAttribute("stringurl", passwordStringurl)
+                        .setAttribute("stringurlToken", tokenStringurl)
                         .setAttribute("simvaUserToken", "true")
-                        .setAttribute("stringurl", stringurl.toString())
+                        .setAttribute("hasLoginHint", hasLoginHint)
                         .createLoginUsernamePassword();
                     context.challenge(challengeResponse);
                 }
@@ -391,7 +406,9 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                         logger.info("User not found in Keycloak: " + username);
                         Response challengeResponse = context.form()
                             .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
-                            .setAttribute("stringurl", stringurl.toString())
+                            .setAttribute("stringurl", passwordStringurl)
+                            .setAttribute("stringurlToken", tokenStringurl)
+                            .setAttribute("hasLoginHint", hasLoginHint)
                             .setError(errorMsg)
                             .createLoginUsernamePassword();
                         context.challenge(challengeResponse);
@@ -409,7 +426,9 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                     // Create a form error response
                     Response challengeResponse = context.form()
                         .setAttribute("hideLocaleDropdown", hideLocaleDropdown)
-                        .setAttribute("stringurl", stringurl.toString())
+                        .setAttribute("stringurl", passwordStringurl)
+                        .setAttribute("stringurlToken", tokenStringurl)
+                        .setAttribute("hasLoginHint", hasLoginHint)
                         .setError(errorMsg)
                         .createLoginUsernamePassword();
                     context.challenge(challengeResponse);
