@@ -16,7 +16,12 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
+import org.keycloak.TokenVerifier;
+import org.keycloak.crypto.SignatureProvider;
+import org.keycloak.crypto.SignatureVerifierContext;
+import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.representations.AccessToken;
+import org.keycloak.services.Urls;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,6 +83,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
 
     private UserModel resolvedUser = null;
     private UserSessionModel resolvedUserSession = null;
+    private boolean resolvedUserNeedsSession = false;
 
     /**
      * Constructs a new CustomAuthenticator instance.
@@ -131,6 +137,18 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                                 + " (strict identity token verification failed, reusing valid server-side session)");
                     } else {
                         logger.info("Could not resolve user session from identity cookie");
+                        // Tier 2: no live server-side session (e.g. Keycloak was restarted
+                        // and in-memory user sessions were lost). The identity cookie is
+                        // cryptographically protected, so verify its signature and issuer,
+                        // recover the subject, and recreate the session in authenticate().
+                        UserModel identityUser = resolveUserFromIdentityCookie(realm, identityCookie);
+                        if (identityUser != null) {
+                            resolvedUser = identityUser;
+                            resolvedUserNeedsSession = true;
+                            authenticatedUsername = identityUser.getUsername();
+                            logger.info("Verified identity cookie for user: " + authenticatedUsername
+                                    + " (no live session, will recreate user session)");
+                        }
                     }
                 }
             }
@@ -158,6 +176,7 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
                         }
                         resolvedUser = null;
                         resolvedUserSession = null;
+                        resolvedUserNeedsSession = false;
                         session.getContext().getAuthenticationSession().setAuthenticatedUser(null);
                         session.getContext().getAuthenticationSession().removeAuthNote(USER_SET_BEFORE_USERNAME_PASSWORD_AUTH);
                     } else {
@@ -235,6 +254,101 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
     }
 
     /**
+     * Recovers the user referenced by a Keycloak identity cookie when no live
+     * server-side user session exists anymore (e.g. Keycloak was restarted and
+     * the in-memory sessions were lost).
+     * 
+     * <p>Unlike {@link #resolveIdentityCookieSession(RealmModel, String)}, this
+     * verifies the cookie's cryptographic signature, algorithm, issuer, activity
+     * and token type, so the recovered subject can be trusted to re-establish a
+     * user session without a password prompt. The server-side session lookup is
+     * deliberately skipped because the session no longer exists.</p>
+     * 
+     * @param realm The realm model
+     * @param identityCookie The raw identity cookie value
+     * @return The verified user, or null if the cookie could not be verified
+     */
+    private UserModel resolveUserFromIdentityCookie(RealmModel realm, String identityCookie) {
+        try {
+            String issuer = Urls.realmIssuer(session.getContext().getUri().getBaseUri(), realm.getName());
+            TokenVerifier<AccessToken> verifier = TokenVerifier.create(identityCookie, AccessToken.class)
+                    .withDefaultChecks()
+                    .realmUrl(issuer)
+                    .checkActive(true)
+                    .checkTokenType(true);
+
+            JWSHeader header = verifier.getHeader();
+            String algorithm = header.getAlgorithm() != null ? header.getAlgorithm().name() : null;
+            if (algorithm == null) {
+                logger.info("Identity cookie has no algorithm, cannot verify signature");
+                return null;
+            }
+            SignatureProvider signatureProvider = session.getProvider(SignatureProvider.class, algorithm);
+            if (signatureProvider == null) {
+                logger.info("No signature provider for identity cookie algorithm: " + algorithm);
+                return null;
+            }
+            SignatureVerifierContext verifierContext = signatureProvider.verifier(header.getKeyId());
+            verifier.verifierContext(verifierContext);
+
+            AccessToken token = verifier.verify().getToken();
+            if (token == null) {
+                logger.info("Identity cookie verification returned null token");
+                return null;
+            }
+            if (!"Serialized-ID".equals(token.getType())) {
+                logger.info("Identity cookie is not of type Serialized-ID: " + token.getType());
+                return null;
+            }
+            String subject = token.getSubject();
+            if (subject == null || subject.isEmpty()) {
+                logger.info("Identity cookie has no subject");
+                return null;
+            }
+            UserModel user = session.users().getUserById(realm, subject);
+            if (user == null) {
+                user = session.users().getUserByUsername(realm, subject);
+            }
+            if (user == null) {
+                logger.info("No user found for identity cookie subject: " + subject);
+                return null;
+            }
+            if (!user.isEnabled()) {
+                logger.info("User from identity cookie is disabled: " + user.getUsername());
+                return null;
+            }
+            logger.info("Verified identity cookie for user: " + user.getUsername());
+            return user;
+        } catch (Exception e) {
+            logger.info("Failed to verify identity cookie: " + e.toString());
+            return null;
+        }
+    }
+
+    /**
+     * Creates a fresh server-side user session for a user whose identity cookie
+     * was verified but whose previous session no longer exists.
+     * 
+     * @param context The authentication flow context
+     * @param user The verified user
+     * @return The recreated user session, or null if creation failed
+     */
+    private UserSessionModel recreateUserSession(AuthenticationFlowContext context, UserModel user) {
+        try {
+            RealmModel realm = context.getRealm();
+            String ipAddress = context.getConnection().getRemoteAddr();
+            UserSessionModel userSession = session.sessions().createUserSession(
+                    realm, user, user.getUsername(), ipAddress, "cookie", false, null, null);
+            logger.info("Recreated user session for user: " + user.getUsername()
+                    + " (session id: " + userSession.getId() + ")");
+            return userSession;
+        } catch (Exception e) {
+            logger.info("Failed to recreate user session for user: " + user.getUsername() + ": " + e.toString());
+            return null;
+        }
+    }
+
+    /**
      * Initiates the authentication flow by displaying the appropriate login form.
      * 
      * <p>This method determines which login form to display based on the request parameters:</p>
@@ -269,29 +383,41 @@ public class CustomAuthenticator extends AbstractUsernameFormAuthenticator imple
         // SSO continuation for an existing valid user session resolved in the
         // constructor (identity cookie present, server-side session still active).
         // Completes the flow without re-prompting, matching username/password
-        // users who already have a resolvable identity cookie.
-        if (this.resolvedUser != null && this.resolvedUserSession != null && context.getUser() == null) {
-            logger.info("Completing SSO flow for already authenticated user: " + this.resolvedUser.getUsername());
-            context.setUser(this.resolvedUser);
-            context.attachUserSession(this.resolvedUserSession);
-            context.getAuthenticationSession().setAuthNote(USER_SET_BEFORE_USERNAME_PASSWORD_AUTH, "true");
-            try {
-                // Recreate a fresh identity cookie so future requests short-circuit
-                // through Keycloak's standard SSO handling, like username/password users.
-                // This is an optimization only; the current flow completes regardless.
-                AuthenticationManager.createLoginCookie(context.getSession(),
-                        context.getRealm(),
-                        this.resolvedUser,
-                        this.resolvedUserSession,
-                        context.getUriInfo(),
-                        context.getConnection());
-            } catch (Exception e) {
-                logger.info("Failed to recreate identity cookie while completing SSO flow: " + e.toString());
+        // users who already have a resolvable identity cookie. If no live session
+        // exists but the identity cookie was verified (Tier 2), a fresh user
+        // session is recreated here before completing the SSO flow.
+        if (this.resolvedUser != null && context.getUser() == null) {
+            if (this.resolvedUserSession == null && this.resolvedUserNeedsSession) {
+                this.resolvedUserSession = recreateUserSession(context, this.resolvedUser);
+                if (this.resolvedUserSession == null) {
+                    logger.info("Could not recreate user session for identity cookie user: " + this.resolvedUser.getUsername());
+                    this.resolvedUser = null;
+                    this.resolvedUserNeedsSession = false;
+                }
             }
-            this.resolvedUser = null;
-            this.resolvedUserSession = null;
-            context.success();
-            return;
+            if (this.resolvedUser != null && this.resolvedUserSession != null) {
+                logger.info("Completing SSO flow for already authenticated user: " + this.resolvedUser.getUsername());
+                context.setUser(this.resolvedUser);
+                context.attachUserSession(this.resolvedUserSession);
+                context.getAuthenticationSession().setAuthNote(USER_SET_BEFORE_USERNAME_PASSWORD_AUTH, "true");
+                try {
+                    // Recreate a fresh identity cookie so future requests short-circuit
+                    // through Keycloak's standard SSO handling, like username/password users.
+                    // This is an optimization only; the current flow completes regardless.
+                    AuthenticationManager.createLoginCookie(context.getSession(),
+                            context.getRealm(),
+                            this.resolvedUser,
+                            this.resolvedUserSession,
+                            context.getUriInfo(),
+                            context.getConnection());
+                } catch (Exception e) {
+                    logger.info("Failed to recreate identity cookie while completing SSO flow: " + e.toString());
+                }
+                this.resolvedUser = null;
+                this.resolvedUserSession = null;
+                context.success();
+                return;
+            }
         }
 
         if (context.getUser() != null) {
