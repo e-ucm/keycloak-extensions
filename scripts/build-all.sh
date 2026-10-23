@@ -67,7 +67,7 @@ projects=("lti-oidc-mapper" "script-policy-attribute-mapper")
 keycloak_version="10.0.2"
 for i in "${!projects[@]}"; do
     project=${projects[$i]};
-    $SCRIPT_DIR/build.sh --keycloak $keycloak_version "$SCRIPT_DIR/../$project"
+    $SCRIPT_DIR/build.sh --build "$BUILD_VERSION" --keycloak $keycloak_version "$SCRIPT_DIR/../$project"
     cp $SCRIPT_DIR/../${project}/target/es.e-ucm.simva.keycloak.$project-$BUILD_VERSION.jar $SCRIPT_DIR/builds-$BUILD_VERSION/es.e-ucm.simva.keycloak.$project-keycloak${keycloak_version%%.*}-$BUILD_VERSION.jar
 done
 
@@ -75,15 +75,15 @@ projects=("custom-token-auth-spi" "fullname-attribute-mapper" "policy-attribute-
 keycloak_version="24.0.2"
 for i in "${!projects[@]}"; do
     project=${projects[$i]};
-    $SCRIPT_DIR/build.sh --keycloak $keycloak_version "$SCRIPT_DIR/../$project"
+    $SCRIPT_DIR/build.sh --build "$BUILD_VERSION" --keycloak $keycloak_version "$SCRIPT_DIR/../$project"
     cp $SCRIPT_DIR/../${project}/target/es.e-ucm.simva.keycloak.$project-$BUILD_VERSION.jar $SCRIPT_DIR/builds-$BUILD_VERSION/es.e-ucm.simva.keycloak.$project-keycloak${keycloak_version%%.*}-$BUILD_VERSION.jar
 done
 
 projects=("custom-token-auth-spi" "fullname-attribute-mapper" "policy-attribute-mapper" "simva-theme-v2")
-keycloak_version="26.1.3"
+keycloak_version="26.4.7"
 for i in "${!projects[@]}"; do
     project=${projects[$i]};
-    $SCRIPT_DIR/build.sh --keycloak $keycloak_version "$SCRIPT_DIR/../$project"
+    $SCRIPT_DIR/build.sh --build "$BUILD_VERSION" --keycloak $keycloak_version "$SCRIPT_DIR/../$project"
     cp $SCRIPT_DIR/../${project}/target/es.e-ucm.simva.keycloak.$project-$BUILD_VERSION.jar $SCRIPT_DIR/builds-$BUILD_VERSION/es.e-ucm.simva.keycloak.$project-keycloak${keycloak_version%%.*}-$BUILD_VERSION.jar
 done
 

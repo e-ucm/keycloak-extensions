@@ -4,6 +4,7 @@ set -eo pipefail
 
 : ${MAVEN_BUILDER_IMAGE:=maven:3.9.9-eclipse-temurin-17}
 : ${KEYCLOAK_VERSION:=24.0.2}
+: ${BUILD_VERSION:=1.3.0}
 
 SOURCE=${BASH_SOURCE[0]}
 while [ -L "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
@@ -24,6 +25,8 @@ function usage ()
     echo 1>&2 "      Folder were maven cache is stored (useful to reuse between executions)."
     echo 1>&2 "  -k, --keycloak <keycloak version>"
     echo 1>&2 "      Keycloak version to compile the extension."
+    echo 1>&2 "  -b, --build <build version>"
+    echo 1>&2 "      Package version (-Dpackage.version) of the extension (${BUILD_VERSION})."
 }
 
 
@@ -31,11 +34,13 @@ LIST_LONG_OPTIONS=(
   "help"
   "cache:"
   "keycloak:"
+  "build:"
 )
 LIST_SHORT_OPTIONS=(
   "h"
   "c:"
   "k:"
+  "b:"
 )
 
 opts=$(getopt \
@@ -57,6 +62,10 @@ while [[ $# -gt 0 ]]; do
         ;;
     -k | --keycloak )
         KEYCLOAK_VERSION="$2"
+        shift 2
+        ;;
+    -b | --build )
+        BUILD_VERSION="$2"
         shift 2
         ;;
     --)
@@ -81,7 +90,7 @@ if [[ ! -d "${m2_cache}" ]]; then
     mkdir -p "${m2_cache}"
 fi
 
-mvn_cmd="mvn -Duser.home=/maven-config "-Dkeycloak.version=${KEYCLOAK_VERSION}" clean package"
+mvn_cmd="mvn -Duser.home=/maven-config -Dkeycloak.version=${KEYCLOAK_VERSION} -Drevision=${BUILD_VERSION} clean package"
 user_uid=$(id -u ${USER})
 user_gid=$(id -g ${USER})
 
